@@ -509,8 +509,9 @@ function getSelectedMonthKeyForDiasElegido() {
   if (mc && /^\d{4}-\d{2}$/.test(mc)) return mc;
 
   // Alternativa: select explícito "mesElegido" (si lo llegás a usar)
-  const m1 = document.getElementById("mesElegido")?.value;
-  if (m1 && /^\d{4}-\d{2}$/.test(m1)) return m1;
+  const m1 = document.getElementById("mesCalculo")?.value; // YYYY-MM
+if (m1 && /^\d{4}-\d{2}$/.test(m1)) return m1;
+
 
   // Alternativa: filtro de mes del histórico (#fMes)
   const m2 = document.getElementById("fMes")?.value;
@@ -598,13 +599,11 @@ function ensureDiasOnRecord(r) {
 }
 function bindDiasAutoCalc() {
   ["desde", "hasta", "mesCalculo", "fMes"].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-
-    el.addEventListener("change", () => syncDiasFields({ force: true }));
-    el.addEventListener("input", () => syncDiasFields({ force: false }));
+    document.getElementById(id)?.addEventListener("change", () => syncDiasFields({ force: true }));
+    document.getElementById(id)?.addEventListener("input", () => syncDiasFields({ force: false }));
   });
 }
+
 
 
   
