@@ -2,6 +2,12 @@
    AUTH (Firebase - Google)
    - Requiere firebase.js + config.js (FIREBASE_CONFIG, ALLOWED_EMAILS)
 ================================ */
+console.log("APP VERSION DB:", DOT_DB_VERSION);
+
+
+import { auth, db } from "./firebase.js";
+
+
 let CURRENT_USER_EMAIL = null;
 let __APP_STARTED = false;
 
@@ -136,6 +142,9 @@ function askDeletePassword(accion) {
 
 const DOT_DB_NAME = "art_app_db";
 const DOT_STORE = "dotacion";
+const DOT_DB_VERSION = 3; // 👈 SUBIMOS versión (antes era 1 o 2)
+
+
 const DOT_CACHE_KEY = "dotacion_cache_v1";
 
 let indexPorDni = new Map(); // dni -> row excel
@@ -201,7 +210,8 @@ async function parseExcelToRows(file) {
  ***********************/
 function openDotDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DOT_DB_NAME, 1);
+    const req = indexedDB.open(DOT_DB_NAME, DOT_DB_VERSION);
+
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(DOT_STORE)) {
@@ -434,9 +444,7 @@ function cargarRegistroEnFormulario(r) {
   if ($("envioDenuncia")) $("envioDenuncia").value = r["Envio Denuncia"] || "";
 }
 
-function getVal(id) {
-  return $(id)?.value ?? "";
-}
+
 
 function getVal(id) {
   return document.getElementById(id)?.value ?? "";

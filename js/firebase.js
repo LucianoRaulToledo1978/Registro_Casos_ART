@@ -1,4 +1,5 @@
-// firebase.js (CDN modular) - expone helpers en window.FB
+// firebase.js (CDN modular) - expone helpers en window.FB y exports para app.js
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
   getAuth,
@@ -22,23 +23,42 @@ import {
   writeBatch
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
+// ✅ NO importamos config.js como módulo.
+// config.js define window.FIREBASE_CONFIG, window.ALLOWED_EMAILS, etc.
+
 function assertConfig() {
-  if (!window.FIREBASE_CONFIG || !window.FIREBASE_CONFIG.projectId || window.FIREBASE_CONFIG.projectId === "PONER_PROJECT_ID") {
+  if (
+    !window.FIREBASE_CONFIG ||
+    !window.FIREBASE_CONFIG.projectId ||
+    window.FIREBASE_CONFIG.projectId === "PONER_PROJECT_ID"
+  ) {
     console.error("⚠️ FIREBASE_CONFIG no está configurado. Editá config.js y pegá la config real de Firebase.");
   }
 }
 assertConfig();
 
-const app = initializeApp(window.FIREBASE_CONFIG);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// ✅ Usar un nombre distinto para evitar choques por duplicados
+const FB_CONFIG = window.FIREBASE_CONFIG;
+
+if (!FB_CONFIG) {
+  throw new Error("FIREBASE_CONFIG no está cargado. Asegurate de incluir ./js/config.js antes de app.js");
+}
+
+const app = initializeApp(FB_CONFIG);
+
+// ✅ Export para que app.js pueda hacer: import { auth, db } from "./firebase.js";
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+
 const provider = new GoogleAuthProvider();
 
 function emailAllowed(email) {
   const list = Array.isArray(window.ALLOWED_EMAILS) ? window.ALLOWED_EMAILS : [];
   // si la lista está vacía, por seguridad BLOQUEA
   if (list.length === 0) return false;
-  return list.map(e => String(e).toLowerCase().trim()).includes(String(email).toLowerCase().trim());
+  return list
+    .map(e => String(e).toLowerCase().trim())
+    .includes(String(email).toLowerCase().trim());
 }
 
 async function login() {
@@ -116,6 +136,7 @@ async function deleteMany(ids = []) {
   await Promise.all(commits);
 }
 
+// Compatibilidad: también dejo tu objeto global window.FB
 window.FB = {
   app, auth, db,
   emailAllowed,

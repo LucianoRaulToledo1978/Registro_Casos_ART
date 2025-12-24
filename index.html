@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ART – Registro de siniestros</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="estilos.css?v=20251220">
+  <link rel="stylesheet" href="./assets/css/estilos.css">
+
+
 
 </head>
 
@@ -17,7 +19,8 @@
   <!-- OVERLAY DE ACCESO -->
 <div id="accessOverlay">
   <div class="access-card">
-    <img src="./imagenes/LOGO_CORREO_ARGENTINO.png" alt="Correo Argentino">
+    <img src="./assets/imagenes/LOGO_CORREO_ARGENTINO.png" alt="Logo Correo Argentino">
+
     <h2>Acceso restringido</h2>
     <p>Ingresá con tu cuenta Google autorizada</p>
 
@@ -33,7 +36,7 @@
   <h1>ART – Registro de siniestros</h1>
 
   <div style="display:flex; align-items:center; gap:12px;">
-    <img src="./imagenes/LOGO_CORREO_ARGENTINO.png" alt="LOGO DE CORREO">
+    <img src="./assets/imagenes/LOGO_CORREO_ARGENTINO.png" alt="Logo Correo Argentino">
 
     <button id="btnLogout" title="Cerrar sesión">
       Cerrar sesión
@@ -290,10 +293,10 @@
   <!-- Excel (SheetJS) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- App -->
-  <script src="./config.js"></script>
-  <script type="module" src="./firebase.js"></script>
-  <script defer src="./app.js?v=20251220"></script>
+ <script src="./js/config.js"></script>
 
-</body>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script type="module" src="./js/app.js"></script>
+
 </html>
