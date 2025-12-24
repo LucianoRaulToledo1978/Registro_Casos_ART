@@ -597,16 +597,18 @@ function ensureDiasOnRecord(r) {
   return r;
 }
 function bindDiasAutoCalc() {
-  ["desde", "hasta", "mesCalculo", "mesElegido", "fMes"].forEach(id => {
+  ["desde", "hasta", "mesCalculo", "fMes"].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
+
     el.addEventListener("change", () => syncDiasFields({ force: true }));
     el.addEventListener("input", () => syncDiasFields({ force: false }));
   });
-
-  // Inicial: si ya hay fechas cargadas (por edición / autocompleta), completa al cargar
-  syncDiasFields({ force: true });
 }
+
+
+  
+
 
 
 function getVal(id) {
