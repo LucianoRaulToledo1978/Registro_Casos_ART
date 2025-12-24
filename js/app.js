@@ -1,8 +1,12 @@
+
+console.log("APP.JS NUEVO CARGADO ✅", new Date().toISOString());
+
+
 /* ===============================
    AUTH (Firebase - Google)
    - Requiere firebase.js + config.js (FIREBASE_CONFIG, ALLOWED_EMAILS)
 ================================ */
-console.log("APP JS CARGADO - build 2025-12-24 - DOT_DB_VERSION:", DOT_DB_VERSION);
+
 
 
 
