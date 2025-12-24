@@ -1,0 +1,323 @@
+/* Fuente / base */
+:root{
+  --ca-azul:#003a70;
+  --ca-amarillo:#ffd200;
+  --bg:#f4f4f4;
+  --b:#d9d9d9;
+  --t:#222;
+}
+
+*{ box-sizing:border-box; }
+
+body{
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:var(--bg);
+  margin:0;
+  padding:16px;
+  color:var(--t);
+}
+
+h1{ margin:0 0 10px; }
+h3{ margin:0 0 10px; }
+
+/* ===============================
+   HEADER (CABECERA) – FLEX ROW
+   ✅ Siempre en fila, con logo + botón a la derecha
+================================ */
+#cabesera{
+  background:#fff;
+  border:1px solid var(--b);
+  border-radius:14px;
+  padding:14px;
+  margin:12px 0;
+  box-shadow:0 10px 24px rgba(0,0,0,.06);
+
+  display:flex;
+  flex-direction:row;       /* 👈 fila */
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:nowrap;         /* 👈 evita que se apile */
+}
+
+#cabesera h1{
+  margin:0;
+  color:var(--ca-azul);
+  font-weight:800;
+  line-height:1.1;
+  /* permite que en pantallas chicas baje a 2 líneas sin romper todo */
+  white-space:normal;
+}
+
+#cabesera img{
+  width:72px;
+  height:auto;
+  object-fit:contain;
+}
+
+/* Si envolvés logo + botón en un div (recomendado) */
+#cabesera > div{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-direction:row;
+}
+
+/* Ajustes finos mobile (mantiene row) */
+@media (max-width: 480px){
+  #cabesera{
+    padding:12px;
+    gap:10px;
+  }
+  #cabesera img{
+    width:56px;
+  }
+  #cabesera h1{
+    font-size:1.05rem;
+  }
+}
+
+/* ===============================
+   CARDS / FORM
+================================ */
+.card{
+  background:#fff;
+  border:1px solid var(--b);
+  border-radius:14px;
+  padding:14px;
+  margin:12px 0;
+  box-shadow:0 10px 24px rgba(0,0,0,.06);
+}
+
+.row{
+  display:grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap:10px;
+}
+
+label{
+  font-size:12px;
+  color:#444;
+  display:block;
+  margin:0 0 6px;
+}
+
+input, select, textarea{
+  width:100%;
+  padding:10px;
+  border:1px solid #cfcfcf;
+  border-radius:12px;
+  background:#fff;
+}
+
+textarea{ min-height:70px; resize:vertical; }
+
+.actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:10px;
+}
+
+button{
+  padding:10px 14px;
+  border:0;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:600;
+}
+
+.btn{ background:var(--ca-azul); color:#fff; }
+.btn2{ background:var(--ca-amarillo); color:var(--ca-azul); }
+.btn3{ background:#111; color:#fff; }
+
+button:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+.status{ font-size:13px; color:#333; }
+.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.muted{ color:#666; }
+
+/* ===============================
+   TABLA
+================================ */
+.table-wrap{
+  max-height:420px;
+  overflow:auto;
+  border:1px solid #e2e2e2;
+  border-radius:12px;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+
+th, td{
+  border:1px solid #e2e2e2;
+  padding:8px;
+  text-align:left;
+  vertical-align:top;
+}
+
+thead th{
+  background:#f7f7f7;
+  position:sticky;
+  top:0;
+  z-index:2;
+}
+
+/* ✅ fila de filtros por columna */
+thead tr.filter-row th{
+  background:#fafafa;
+  position:sticky;
+  top:42px;   /* ajusta si cambia la altura del header */
+  z-index:3;
+  padding:6px;
+}
+
+thead tr.filter-row input{
+  width:100%;
+  padding:8px;
+  border-radius:10px;
+  border:1px solid #d5d5d5;
+  font-size:12px;
+}
+
+/* Responsive */
+@media (max-width: 980px){
+  .row{ grid-template-columns: 1fr 1fr; }
+  thead tr.filter-row th{ top:42px; }
+}
+@media (max-width: 560px){
+  .row{ grid-template-columns: 1fr; }
+}
+
+/* Acciones en tabla */
+.td-actions{
+  white-space: nowrap;
+  text-align:center;
+}
+
+.btn-mini{
+  padding:7px 10px;
+  border-radius:10px;
+  border:0;
+  cursor:pointer;
+  font-weight:700;
+  font-size:12px;
+}
+
+.btn-edit{
+  background: var(--ca-amarillo);
+  color: var(--ca-azul);
+}
+
+.btn-del{
+  background:#b00020;
+  color:#fff;
+}
+
+/* celdas sin filtro en header (acciones) */
+th.no-filter{
+  background:#fafafa;
+}
+
+/* ===============================
+   OVERLAY DE ACCESO
+================================ */
+#accessOverlay{
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, #003a70, #002451);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.access-card{
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 26px 24px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0,0,0,.25);
+}
+
+.access-card img{
+  width: 90px;
+  margin-bottom: 12px;
+}
+
+.access-card h2{
+  color: #003a70;
+  margin-bottom: 6px;
+}
+
+.access-card p{
+  color: #444;
+  margin-bottom: 14px;
+}
+
+.access-card input{
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #d9d9d9;
+  margin-bottom: 12px;
+  font-size: 1rem;
+}
+
+.access-card button{
+  width: 100%;
+  padding: 12px;
+  border-radius: 999px;
+  background: #003a70;
+  color: #fff;
+  border: none;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.access-card button:hover{
+  filter: brightness(1.1);
+}
+
+#accessError{
+  display: none;
+  margin-top: 10px;
+  color: #b00020;
+  font-weight: 700;
+}
+
+/* ===============================
+   BOTÓN CERRAR SESIÓN
+================================ */
+#btnLogout{
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid #b00020;
+  background: #ffffff;
+  color: #b00020;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all .15s ease;
+  white-space: nowrap;
+}
+
+#btnLogout:hover{
+  background: #b00020;
+  color: #ffffff;
+}
+
+@media (max-width: 480px){
+  #btnLogout{
+    padding: 6px 12px;
+    font-size: .85rem;
+  }
+}

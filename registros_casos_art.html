@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ART – Registro de siniestros</title>
+  <link rel="icon" href="data:,">
+
+
+  <style>
+    :root{
+      --ca-azul:#003a70; 
+      --ca-amarillo:#ffd200; 
+      --bg:#f4f4f4; 
+      --b:#d9d9d9; 
+      --t:#222;
+    }
+    *{box-sizing:border-box}
+    body{
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background:var(--bg); margin:0; padding:16px; color:var(--t);
+    }
+    h1{margin:0 0 10px}
+    h3{margin:0 0 10px}
+    .card{
+      background:#fff; border:1px solid var(--b);
+      border-radius:14px; padding:14px; margin:12px 0;
+      box-shadow:0 10px 24px rgba(0,0,0,.06)
+    }
+    .row{display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px;}
+    label{font-size:12px; color:#444; display:block; margin:0 0 6px}
+    input, select, textarea{
+      width:100%; padding:10px; border:1px solid #cfcfcf;
+      border-radius:12px; background:#fff;
+    }
+    textarea{min-height:70px; resize:vertical;}
+    .actions{display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;}
+    button{padding:10px 14px; border:0; border-radius:12px; cursor:pointer; font-weight:600;}
+    .btn{background:var(--ca-azul); color:#fff;}
+    .btn2{background:var(--ca-amarillo); color:var(--ca-azul);}
+    .btn3{background:#111; color:#fff;}
+    .status{font-size:13px; color:#333;}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;}
+    table{width:100%; border-collapse:collapse; font-size:13px;}
+    th, td{border:1px solid #e2e2e2; padding:8px; text-align:left; vertical-align:top;}
+    thead th{background:#f7f7f7; position:sticky; top:0; z-index:1;}
+    .table-wrap{max-height:420px; overflow:auto; border:1px solid #e2e2e2; border-radius:12px;}
+    .muted{color:#666}
+    @media (max-width: 980px){ .row{grid-template-columns: 1fr 1fr;} }
+    @media (max-width: 560px){ .row{grid-template-columns: 1fr;} }
+  </style>
+
+</head>
+
+<body>
+
+  <div id="accessOverlay">
+  <div class="access-card">
+    <img src="./imagenes/LOGO_CORREO_ARGENTINO.png" alt="Correo Argentino">
+    <h2>Acceso restringido</h2>
+    <p>Ingresá con tu cuenta Google autorizada</p>
+
+    <button id="btnGoogleLogin" class="btn1">Ingresar con Google</button>
+    <div id="accessUserInfo" class="mono" style="margin-top:10px; display:none;"></div>
+
+    <div id="accessError">No tenés permiso para ingresar con este correo.</div>
+  </div>
+</div>
+
+
+
+
+  <h1>ART – Registro de siniestros</h1>
+
+  <!-- 1) DOTACIÓN -->
+  <div class="card">
+    <h3>1) Cargar base Dotación (Excel)</h3>
+
+    <div class="row">
+      <div>
+        <label>Versión dotación (fecha)</label>
+        <input type="date" id="dotVersionDate" />
+
+        <label style="margin-top:10px">Dotacion.xlsx</label>
+        <input type="file" id="fileDotacion" accept=".xlsx,.xls" />
+
+        <div class="actions">
+          <button class="btn2" id="btnUsarCache">Usar dotación guardada (cache)</button>
+          <button class="btn" id="btnActualizarDotacion">Actualizar dotación</button>
+          <button class="btn3" id="btnBorrarCache">Borrar cache dotación</button>
+        </div>
+
+        <div class="status" id="estadoCache"></div>
+      </div>
+
+      <div class="status" style="align-self:end">
+        <div id="estadoDotacion">Sin cargar</div>
+        <div class="mono" id="infoDotacion"></div>
+      </div>
+    </div>
+
+    <p class="muted">
+      El Excel debe contener: DNI, CUIL, Legajo, Apellido y Nombre, Posición,
+      RRHH, Área, Provincia, Unidad organizativa.
+    </p>
+  </div>
+
+  <!-- 2) BUSCAR -->
+  <div class="card">
+    <h3>2) Buscar empleado por DNI</h3>
+
+    <div class="row">
+      <div>
+        <label>DNI</label>
+        <input id="dni" inputmode="numeric" placeholder="Ej: 28604302" />
+      </div>
+
+      <div class="actions" style="align-self:end">
+        <button class="btn" id="btnBuscar">Buscar</button>
+        <button class="btn2" id="btnLimpiar">Limpiar</button>
+      </div>
+
+      <div class="status" style="grid-column: 1 / -1;">
+        <div id="estadoBusqueda"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3) CARGA -->
+  <div class="card">
+    <h3>3) Carga del caso (autocompleta + manual)</h3>
+
+    <div class="row">
+      <div><label>CUIL</label><input id="cuil" /></div>
+      <div><label>Legajo</label><input id="legajo" /></div>
+      <div><label>Apellido y Nombre</label><input id="nombre" /></div>
+      <div><label>Ubicación Laboral</label><input id="ubicacion" /></div>
+
+      <div><label>Función</label><input id="funcion" /></div>
+      <div><label>Área</label><input id="area" /></div>
+      <div><label>Provincia</label><input id="provincia" /></div>
+      <div><label>Región</label><input id="region" /></div>
+
+      <div><label>Personal</label><input id="personal" /></div>
+
+      <div><label>Fecha (denuncia)</label><input type="date" id="fecha" /></div>
+      <div><label>Desde (inicio IT)</label><input type="date" id="desde" /></div>
+      <div><label>Hasta (alta)</label><input type="date" id="hasta" /></div>
+
+      <div><label>Días caídos TOTAL</label><input id="diasTotal" readonly class="mono" /></div>
+      <div><label>Días caídos MES EN CURSO</label><input id="diasMesActual" readonly class="mono" /></div>
+      <div><label>Mes a calcular</label><input type="month" id="mesCalculo" /></div>
+      <div><label>Días caídos MES elegido</label><input id="diasMesElegido" readonly class="mono" /></div>
+
+      <div>
+        <label>A / NC</label>
+        <select id="anc">
+          <option value="A">A</option>
+          <option value="NC">NC</option>
+        </select>
+      </div>
+
+      <div><label>N° Siniestro</label><input id="nroSiniestro" /></div>
+      <div><label>CIE-10</label><input id="cie10" /></div>
+
+      <div>
+        <label>Gravedad</label>
+        <select id="gravedad">
+          <option>Leve</option>
+          <option>Moderada</option>
+          <option>Grave</option>
+        </select>
+      </div>
+
+      <div><label>Observación</label><input id="observacion" placeholder="AT / ACC IN ITINERE" /></div>
+
+      <div style="grid-column:1 / -1">
+        <label>Descripción del hecho</label>
+        <textarea id="descripcion"></textarea>
+      </div>
+
+      <div><label>Prestador</label><input id="prestador" /></div>
+      <div><label>Envío Denuncia</label><input id="envioDenuncia" /></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="btnGuardar">Guardar registro</button>
+      <span class="status" id="estadoGuardar"></span>
+    </div>
+  </div>
+
+  <!-- 4) HISTÓRICO -->
+  <div class="card">
+    <h3>4) Histórico + filtros</h3>
+
+    <div class="row">
+      <div>
+        <label>Filtro Provincia</label>
+        <select id="fProvincia"><option value="">Todas</option></select>
+      </div>
+
+      <div>
+        <label>Filtro Área</label>
+        <select id="fArea"><option value="">Todas</option></select>
+      </div>
+
+      <div>
+        <label>Filtro Mes (por DESDE)</label>
+        <input type="month" id="fMes" />
+      </div>
+
+      <div class="actions" style="align-self:end">
+        <button class="btn2" id="btnAplicarFiltros">Aplicar</button>
+        <button class="btn3" id="btnExportExcel">Exportar Excel</button>
+        <button class="btn3" id="btnExportPDF">Exportar PDF</button>
+      </div>
+    </div>
+
+    <p class="muted" id="contadorHistorico"></p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>DNI</th>
+            <th>Nombre</th>
+            <th>Provincia</th>
+            <th>Área</th>
+            <th>Ubicación</th>
+            <th>Desde</th>
+            <th>Hasta</th>
+            <th>Días Total</th>
+            <th>Días Mes (DESDE)</th>
+            <th>Obs</th>
+            <th>N° Siniestro</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyHistorico"></tbody>
+      </table>
+    </div>
+
+    <div class="actions">
+      <button class="btn2" id="btnBorrarHistorico">Borrar histórico (local)</button>
+      <span class="status" id="estadoHistorico"></span>
+    </div>
+  </div>
+
+ 
+
+
+<!-- PDF -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+
+<!-- Excel (SheetJS) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<!-- App -->
+<script src="./config.js"></script>
+<script type="module" src="./firebase.js"></script>
+<script defer src="./app.js"></script>
+
+</body>
+</html>

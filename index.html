@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ART – Registro de siniestros</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="estilos.css?v=20251220">
+
+</head>
+
+<!-- VERSION: 2025-12-20 12:34 -->
+
+
+<body>
+
+  <!-- OVERLAY DE ACCESO -->
+<div id="accessOverlay">
+  <div class="access-card">
+    <img src="./imagenes/LOGO_CORREO_ARGENTINO.png" alt="Correo Argentino">
+    <h2>Acceso restringido</h2>
+    <p>Ingresá con tu cuenta Google autorizada</p>
+
+    <button id="btnGoogleLogin" class="btn1">Ingresar con Google</button>
+    <div id="accessUserInfo" class="mono" style="margin-top:10px; display:none;"></div>
+
+    <div id="accessError">No tenés permiso para ingresar con este correo.</div>
+  </div>
+</div>
+
+
+<header id="cabesera">
+  <h1>ART – Registro de siniestros</h1>
+
+  <div style="display:flex; align-items:center; gap:12px;">
+    <img src="./imagenes/LOGO_CORREO_ARGENTINO.png" alt="LOGO DE CORREO">
+
+    <button id="btnLogout" title="Cerrar sesión">
+      Cerrar sesión
+    </button>
+  </div>
+</header>
+
+
+
+
+
+  <!--<h1>ART – Registro de siniestros</h1>-->
+
+  <!-- 1) DOTACIÓN -->
+  <div class="card">
+    <h3>1) Cargar base Dotación (Excel)</h3>
+
+    <div class="row">
+      <div>
+        <label>Versión dotación (fecha)</label>
+        <input type="date" id="dotVersionDate" />
+
+        <label style="margin-top:10px">Dotacion.xlsx</label>
+        <input type="file" id="fileDotacion" accept=".xlsx,.xls" />
+
+        <div class="actions">
+          <button class="btn2" id="btnUsarCache">Usar dotación guardada (cache)</button>
+          <button class="btn" id="btnActualizarDotacion">Actualizar dotación</button>
+          <button class="btn3" id="btnBorrarCache">Borrar cache dotación</button>
+        </div>
+
+        <div class="status" id="estadoCache"></div>
+      </div>
+
+      <div class="status" style="align-self:end">
+        <div id="estadoDotacion">Sin cargar</div>
+        <div class="mono" id="infoDotacion"></div>
+      </div>
+    </div>
+
+    <p class="muted">
+      El Excel debe contener: DNI, CUIL, Legajo, Apellido y Nombre, Posición,
+      RRHH, Área, Provincia, Unidad organizativa.
+    </p>
+  </div>
+
+  <!-- 2) BUSCAR -->
+  <div class="card">
+    <h3>2) Buscar empleado por DNI</h3>
+
+    <div class="row">
+      <div>
+        <label>DNI</label>
+        <input id="dni" inputmode="numeric" placeholder="Ej: 28604302" />
+      </div>
+
+      <div class="actions" style="align-self:end">
+        <button class="btn" id="btnBuscar">Buscar</button>
+        <button class="btn2" id="btnLimpiar">Limpiar</button>
+      </div>
+
+      <div class="status" style="grid-column: 1 / -1;">
+        <div id="estadoBusqueda"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3) CARGA -->
+  <div class="card">
+    <h3>3) Carga del caso (autocompleta + manual)</h3>
+
+    <!-- buscador para actualizar -->
+    <div class="row" style="margin-bottom:10px">
+      <div>
+        <label>Buscar registro por DNI (para actualizar)</label>
+        <input id="buscarRegDni" inputmode="numeric" placeholder="DNI" />
+      </div>
+      <div>
+        <label>Buscar registro por N° Siniestro (para actualizar)</label>
+        <input id="buscarRegSiniestro" placeholder="N° Siniestro" />
+      </div>
+      <div class="actions" style="align-self:end">
+        <button class="btn2" id="btnBuscarRegistro">Buscar y cargar</button>
+        <button class="btn3" id="btnCancelarEdicion">Cancelar edición</button>
+      </div>
+      <div class="status" style="grid-column:1 / -1;">
+        <div id="estadoEdicion" class="mono"></div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div><label>CUIL</label><input id="cuil" /></div>
+      <div><label>Legajo</label><input id="legajo" /></div>
+      <div><label>Apellido y Nombre</label><input id="nombre" /></div>
+      <div><label>Ubicación Laboral</label><input id="ubicacion" /></div>
+
+      <div><label>Función</label><input id="funcion" /></div>
+      <div><label>Área</label><input id="area" /></div>
+      <div><label>Provincia</label><input id="provincia" /></div>
+      <div><label>Región</label><input id="region" /></div>
+
+      <div><label>Personal</label><input id="personal" /></div>
+
+      <div><label>Fecha de accidente</label><input type="date" id="fecha" /></div>
+      <div><label>Desde (inicio IT)</label><input type="date" id="desde" /></div>
+      <div><label>Hasta (alta)</label><input type="date" id="hasta" /></div>
+
+      <div><label>Días caídos TOTAL</label><input id="diasTotal" readonly class="mono" /></div>
+      <div><label>Días caídos MES EN CURSO</label><input id="diasMesActual" readonly class="mono" /></div>
+      <div><label>Mes a calcular</label><input type="month" id="mesCalculo" /></div>
+      <div><label>Días caídos MES elegido</label><input id="diasMesElegido" readonly class="mono" /></div>
+
+      <div>
+        <label>A / NC</label>
+        <select id="anc">
+          <option value="A">A</option>
+          <option value="NC">NC</option>
+        </select>
+      </div>
+
+      <div><label>N° Siniestro</label><input id="nroSiniestro" /></div>
+      <div><label>CIE-10</label><input id="cie10" /></div>
+
+      <div>
+        <label>Gravedad</label>
+        <select id="gravedad">
+          <option>Leve</option>
+          <option>Moderada</option>
+          <option>Grave</option>
+        </select>
+      </div>
+
+      <div><label>Observación</label><input id="observacion" placeholder="AT / ACC IN ITINERE" /></div>
+
+      <div style="grid-column:1 / -1">
+        <label>Descripción del hecho</label>
+        <textarea id="descripcion"></textarea>
+      </div>
+
+      <div><label>Prestador</label><input id="prestador" /></div>
+      <div><label>Envío Denuncia</label><input id="envioDenuncia" /></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="btnGuardar">Guardar registro</button>
+      <button class="btn3" id="btnActualizar" disabled>Actualizar</button>
+      <span class="status" id="estadoGuardar"></span>
+    </div>
+  </div>
+
+  <!-- 4) HISTÓRICO -->
+  <div class="card">
+    <h3>4) Histórico + filtros</h3>
+
+    <div class="row">
+      <div>
+        <label>Filtro Provincia</label>
+        <select id="fProvincia"><option value="">Todas</option></select>
+      </div>
+
+      <div>
+        <label>Filtro Área</label>
+        <select id="fArea"><option value="">Todas</option></select>
+      </div>
+
+      <div>
+        <label>Filtro A/NC</label>
+        <select id="fANC">
+          <option value="">Todos</option>
+          <option value="A">A</option>
+          <option value="NC">NC</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Filtro Observación</label>
+        <select id="fObs">
+          <option value="">Todas</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Filtro Personal</label>
+        <select id="fPersonal">
+          <option value="">Todos</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Filtro Mes (por DESDE)</label>
+        <input type="month" id="fMes" />
+      </div>
+
+      <div class="actions" style="align-self:end">
+        <button class="btn2" id="btnAplicarFiltros">Aplicar</button>
+        <button class="btn3" id="btnExportExcel">Exportar Excel</button>
+        <button class="btn3" id="btnExportPDF">Exportar PDF</button>
+      </div>
+    </div>
+
+    <p class="muted" id="contadorHistorico"></p>
+
+    <div class="table-wrap">
+      <table id="tablaHistorico">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>DNI</th>
+            <th>Nombre</th>
+            <th>Provincia</th>
+            <th>Área</th>
+            <th>Ubicación</th>
+            <th>Desde</th>
+            <th>Hasta</th>
+            <th>Días Total</th>
+            <th>Días Mes (DESDE)</th>
+            <th>Obs</th>
+            <th>N° Siniestro</th>
+            <th>Editar</th>
+            <th>Eliminar</th>
+          </tr>
+
+          <tr class="filter-row">
+            <th><input id="fcFecha" placeholder="filtrar..." /></th>
+            <th><input id="fcDni" placeholder="filtrar..." /></th>
+            <th><input id="fcNombre" placeholder="filtrar..." /></th>
+            <th><input id="fcProvincia" placeholder="filtrar..." /></th>
+            <th><input id="fcArea" placeholder="filtrar..." /></th>
+            <th><input id="fcUbicacion" placeholder="filtrar..." /></th>
+            <th><input id="fcDesde" placeholder="filtrar..." /></th>
+            <th><input id="fcHasta" placeholder="filtrar..." /></th>
+            <th><input id="fcDiasTotal" placeholder="filtrar..." /></th>
+            <th><input id="fcDiasMes" placeholder="filtrar..." /></th>
+            <th><input id="fcObs" placeholder="filtrar..." /></th>
+            <th><input id="fcSiniestro" placeholder="filtrar..." /></th>
+            <th class="no-filter"></th>
+            <th class="no-filter"></th>
+          </tr>
+        </thead>
+        <tbody id="tbodyHistorico"></tbody>
+      </table>
+    </div>
+
+    <div class="actions">
+      <button class="btn2" id="btnBorrarHistorico">Borrar histórico (local)</button>
+      <span class="status" id="estadoHistorico"></span>
+    </div>
+  </div>
+
+  <!-- PDF -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- Excel (SheetJS) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- App -->
+  <script src="./config.js"></script>
+  <script type="module" src="./firebase.js"></script>
+  <script defer src="./app.js?v=20251220"></script>
+
+</body>
+</html>
