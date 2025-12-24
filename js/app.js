@@ -74,6 +74,7 @@ function bindFirebaseAuth() {
   window.FB.onUser(async (user) => {
     if (!user) {
       CURRENT_USER_EMAIL = null;
+      setAuthLocked(true);        // ✅ AGREGAR
       showAccessOverlay(true, "");
       return;
     }
@@ -81,11 +82,12 @@ function bindFirebaseAuth() {
     CURRENT_USER_EMAIL = user.email || null;
 
     if (!CURRENT_USER_EMAIL || !window.FB.emailAllowed(CURRENT_USER_EMAIL)) {
+      setAuthLocked(true);        // ✅ AGREGAR
       showAccessOverlay(true, "No tenés permiso para ingresar con este correo.");
       try { await window.FB.logout(); } catch {}
       return;
     }
-
+    setAuthLocked(false);         // ✅ AGREGAR
     showAccessOverlay(false, "");
     await startIfReady();
   });
@@ -501,6 +503,27 @@ $("btnGuardar")?.addEventListener("click", async () => {
     setText("estadoGuardar", "Guardando en la nube...");
     const data = getFormData();
 
+    function setAuthLocked(locked) {
+  // Botones de Firestore
+  if ($("btnGuardar")) $("btnGuardar").disabled = locked;
+  if ($("btnActualizar")) $("btnActualizar").disabled = locked || !editingId;
+  if ($("btnBorrarHistorico")) $("btnBorrarHistorico").disabled = locked;
+
+  // (opcional) botones que dependen del user
+  // if ($("btnRefrescar")) $("btnRefrescar").disabled = locked;
+}
+
+function requireLoggedUser() {
+  // La única fuente real para Firestore es auth.currentUser
+  const user = auth?.currentUser;
+  if (!user?.email) {
+    setText("estadoGuardar", "⚠️ Tenés que iniciar sesión para guardar.");
+    throw new Error("NOT_AUTHENTICATED");
+  }
+  return user;
+}
+
+
     const newId = await window.FB.createRegistro(data, CURRENT_USER_EMAIL);
 
     const registros = getRegistros();
@@ -523,22 +546,26 @@ $("btnActualizar")?.addEventListener("click", async () => {
   if (!$("desde").value) return setText("estadoGuardar", "⚠️ Cargá la fecha Desde.");
 
   try {
-    setText("estadoGuardar", "Actualizando en la nube...");
-    const data = getFormData();
+  setText("estadoGuardar", "Guardando en la nube...");
 
-    await window.FB.updateRegistro(editingId, data, CURRENT_USER_EMAIL);
+  const user = requireLoggedUser(); // ✅ clave (auth real)
+  const data = getFormData();
 
-    const registros = getRegistros().map(r => (r.id === editingId ? { ...r, ...data } : r));
-    setRegistros(registros);
+  const newId = await window.FB.createRegistro(data, user.email);
 
-    salirModoEdicion();
-    setText("estadoGuardar", "Actualizado ✅");
-    refrescarFiltros();
-    renderHistorico();
-  } catch (e) {
-    console.error(e);
-    setText("estadoGuardar", "❌ Error al actualizar en Firebase (mirá consola).");
-  }
+  const registros = getRegistros();
+  registros.unshift({ id: newId, ...data });
+  setRegistros(registros);
+
+  setText("estadoGuardar", "Guardado ✅");
+  refrescarFiltros();
+  renderHistorico();
+} catch (e) {
+  console.error(e);
+  if (e?.message === "NOT_AUTHENTICATED") return; // ya mostramos mensaje
+  setText("estadoGuardar", "❌ Error al guardar en Firebase (mirá consola).");
+}
+
 });
 
 $("btnCancelarEdicion")?.addEventListener("click", () => {
