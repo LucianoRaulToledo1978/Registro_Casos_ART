@@ -2,7 +2,8 @@
    AUTH (Firebase - Google)
    - Requiere firebase.js + config.js (FIREBASE_CONFIG, ALLOWED_EMAILS)
 ================================ */
-console.log("APP VERSION DB:", DOT_DB_VERSION);
+console.log("APP JS CARGADO - build 2025-12-24 - DOT_DB_VERSION:", DOT_DB_VERSION);
+
 
 
 import { auth, db } from "./firebase.js";
