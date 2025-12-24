@@ -1,13 +1,7 @@
-
-console.log("APP.JS NUEVO CARGADO ✅", new Date().toISOString());
-
-
 /* ===============================
    AUTH (Firebase - Google)
    - Requiere firebase.js + config.js (FIREBASE_CONFIG, ALLOWED_EMAILS)
 ================================ */
-
-
 
 
 import { auth, db } from "./firebase.js";
@@ -74,7 +68,6 @@ function bindFirebaseAuth() {
   window.FB.onUser(async (user) => {
     if (!user) {
       CURRENT_USER_EMAIL = null;
-      setAuthLocked(true);        // ✅ AGREGAR
       showAccessOverlay(true, "");
       return;
     }
@@ -82,12 +75,11 @@ function bindFirebaseAuth() {
     CURRENT_USER_EMAIL = user.email || null;
 
     if (!CURRENT_USER_EMAIL || !window.FB.emailAllowed(CURRENT_USER_EMAIL)) {
-      setAuthLocked(true);        // ✅ AGREGAR
       showAccessOverlay(true, "No tenés permiso para ingresar con este correo.");
       try { await window.FB.logout(); } catch {}
       return;
     }
-    setAuthLocked(false);         // ✅ AGREGAR
+
     showAccessOverlay(false, "");
     await startIfReady();
   });
@@ -150,7 +142,6 @@ function askDeletePassword(accion) {
 const DOT_DB_NAME = "art_app_db";
 const DOT_STORE = "dotacion";
 const DOT_DB_VERSION = 3; // 👈 SUBIMOS versión (antes era 1 o 2)
-
 
 const DOT_CACHE_KEY = "dotacion_cache_v1";
 
@@ -453,6 +444,107 @@ function cargarRegistroEnFormulario(r) {
 
 
 
+
+/* ===============================
+   CÁLCULO DE DÍAS CAÍDOS (auto)
+   - Usa Desde/Hasta (YYYY-MM-DD)
+   - Dias_ Caidos: inclusive (Hasta - Desde + 1)
+   - Dias_ Caidos Mes (desde DESDE): solapa con el mes de "Desde"
+   - Dias_ Caidos Mes elegido: solapa con el mes seleccionado (si existe #mesElegido o #fMes)
+================================ */
+
+function parseISODate(v) {
+  if (!v) return null;
+  // Espera "YYYY-MM-DD"
+  const d = new Date(v + "T00:00:00");
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function startOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function endOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
+
+// días inclusivo entre dos fechas (00:00)
+function daysInclusive(a, b) {
+  const ms = 24 * 60 * 60 * 1000;
+  const da = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+  const db = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+  const diff = Math.floor((db - da) / ms);
+  return diff >= 0 ? diff + 1 : 0;
+}
+
+// solape inclusivo entre [a,b] y [x,y]
+function overlapDays(a, b, x, y) {
+  const start = (a > x) ? a : x;
+  const end = (b < y) ? b : y;
+  if (end < start) return 0;
+  return daysInclusive(start, end);
+}
+
+function getSelectedMonthKeyForDiasElegido() {
+  // Prioridad: select explícito "mesElegido" (si lo tenés)
+  const m1 = document.getElementById("mesElegido")?.value;
+  if (m1 && /^\d{4}-\d{2}$/.test(m1)) return m1;
+
+  // Alternativa: filtro de mes "fMes" (si lo usás como selector)
+  const m2 = document.getElementById("fMes")?.value;
+  if (m2 && /^\d{4}-\d{2}$/.test(m2) && m2.toLowerCase() !== "todos") return m2;
+
+  return "";
+}
+
+function computeDiasFromInputs() {
+  const desdeStr = getVal("desde");
+  const hastaStr = getVal("hasta");
+
+  const desde = parseISODate(desdeStr);
+  const hasta = parseISODate(hastaStr);
+
+  if (!desde || !hasta) return { total: "", mesDesde: "", mesElegido: "" };
+
+  const total = daysInclusive(desde, hasta);
+
+  // Mes de DESDE
+  const ms = startOfMonth(desde);
+  const me = endOfMonth(desde);
+  const mesDesde = overlapDays(desde, hasta, ms, me);
+
+  // Mes elegido (si existe)
+  const mk = getSelectedMonthKeyForDiasElegido();
+  let mesElegido = "";
+  if (mk) {
+    const [yy, mm] = mk.split("-").map(Number);
+    const mStart = new Date(yy, mm - 1, 1);
+    const mEnd = new Date(yy, mm, 0);
+    mesElegido = overlapDays(desde, hasta, mStart, mEnd);
+  }
+
+  return { total, mesDesde, mesElegido };
+}
+
+function syncDiasFields({ force = false } = {}) {
+  const r = computeDiasFromInputs();
+  const totalEl = document.getElementById("diasTotal");
+  const mesEl = document.getElementById("diasMesActual");
+  const mesSelEl = document.getElementById("diasMesElegido");
+
+  // Si force=false, solo completa si está vacío
+  if (totalEl && (force || !String(totalEl.value || "").trim())) totalEl.value = r.total;
+  if (mesEl && (force || !String(mesEl.value || "").trim())) mesEl.value = r.mesDesde;
+  if (mesSelEl && (force || !String(mesSelEl.value || "").trim())) mesSelEl.value = r.mesElegido;
+}
+
+function bindDiasAutoCalc() {
+  ["desde","hasta","mesElegido","fMes"].forEach(id => {
+    document.getElementById(id)?.addEventListener("change", () => syncDiasFields({ force: true }));
+    document.getElementById(id)?.addEventListener("input", () => syncDiasFields({ force: false }));
+  });
+}
+
 function getVal(id) {
   return document.getElementById(id)?.value ?? "";
 }
@@ -503,27 +595,6 @@ $("btnGuardar")?.addEventListener("click", async () => {
     setText("estadoGuardar", "Guardando en la nube...");
     const data = getFormData();
 
-    function setAuthLocked(locked) {
-  // Botones de Firestore
-  if ($("btnGuardar")) $("btnGuardar").disabled = locked;
-  if ($("btnActualizar")) $("btnActualizar").disabled = locked || !editingId;
-  if ($("btnBorrarHistorico")) $("btnBorrarHistorico").disabled = locked;
-
-  // (opcional) botones que dependen del user
-  // if ($("btnRefrescar")) $("btnRefrescar").disabled = locked;
-}
-
-function requireLoggedUser() {
-  // La única fuente real para Firestore es auth.currentUser
-  const user = auth?.currentUser;
-  if (!user?.email) {
-    setText("estadoGuardar", "⚠️ Tenés que iniciar sesión para guardar.");
-    throw new Error("NOT_AUTHENTICATED");
-  }
-  return user;
-}
-
-
     const newId = await window.FB.createRegistro(data, CURRENT_USER_EMAIL);
 
     const registros = getRegistros();
@@ -546,26 +617,22 @@ $("btnActualizar")?.addEventListener("click", async () => {
   if (!$("desde").value) return setText("estadoGuardar", "⚠️ Cargá la fecha Desde.");
 
   try {
-  setText("estadoGuardar", "Guardando en la nube...");
+    setText("estadoGuardar", "Actualizando en la nube...");
+    const data = getFormData();
 
-  const user = requireLoggedUser(); // ✅ clave (auth real)
-  const data = getFormData();
+    await window.FB.updateRegistro(editingId, data, CURRENT_USER_EMAIL);
 
-  const newId = await window.FB.createRegistro(data, user.email);
+    const registros = getRegistros().map(r => (r.id === editingId ? { ...r, ...data } : r));
+    setRegistros(registros);
 
-  const registros = getRegistros();
-  registros.unshift({ id: newId, ...data });
-  setRegistros(registros);
-
-  setText("estadoGuardar", "Guardado ✅");
-  refrescarFiltros();
-  renderHistorico();
-} catch (e) {
-  console.error(e);
-  if (e?.message === "NOT_AUTHENTICATED") return; // ya mostramos mensaje
-  setText("estadoGuardar", "❌ Error al guardar en Firebase (mirá consola).");
-}
-
+    salirModoEdicion();
+    setText("estadoGuardar", "Actualizado ✅");
+    refrescarFiltros();
+    renderHistorico();
+  } catch (e) {
+    console.error(e);
+    setText("estadoGuardar", "❌ Error al actualizar en Firebase (mirá consola).");
+  }
 });
 
 $("btnCancelarEdicion")?.addEventListener("click", () => {
@@ -759,3 +826,141 @@ $("btnBorrarHistorico")?.addEventListener("click", async () => {
     setText("estadoHistorico", "❌ Error borrando en Firebase (mirá consola).");
   }
 });
+
+
+
+/* ===============================
+   EXPORTS (Excel / PDF)
+   - Requiere:
+     * Excel: SheetJS (XLSX) ya lo tenés en el HTML
+     * PDF: jsPDF + autotable (ya los tenés en el HTML)
+   - IDs sugeridos (si existen en tu HTML):
+     btnExportExcel, btnExportPdf, btnExportPDF, btnExcel, btnPdf
+================================ */
+
+function getFilteredHistorico() {
+  // Usa el mismo filtro que la tabla
+  return applyFilters(getRegistros());
+}
+
+function exportHistoricoExcel() {
+  if (!window.XLSX) {
+    alert("Falta XLSX (SheetJS). Revisá el <script> de xlsx en el HTML.");
+    return;
+  }
+  const rows = getFilteredHistorico();
+  if (!rows.length) return alert("No hay registros para exportar.");
+
+  // Aplanar y ordenar columnas principales
+  const data = rows.map(r => ({
+    ID: r.id || "",
+    DNI: r.DNI || "",
+    CUIL: r.CUIL || "",
+    Legajo: r.Legajo || "",
+    Nombre: r.Nombre || "",
+    Provincia: r.Provincia || "",
+    Area: r.Area || "",
+    Ubicacion: r.Ubicacion || "",
+    Region: r.Region || "",
+    Personal: r.Personal || "",
+    Fecha: r.Fecha || "",
+    Desde: r.Desde || "",
+    Hasta: r.Hasta || "",
+    "Dias Caidos": r["Dias_ Caidos"] ?? "",
+    "Dias Caidos Mes (desde DESDE)": r["Dias_ Caidos Mes (desde DESDE)"] ?? "",
+    "Dias Caidos Mes elegido": r["Dias_ Caidos Mes elegido"] ?? "",
+    "Tipo Accidente": r.TipoAccidente || "",
+    "Tipo Denuncia": r.TipoDenuncia || "",
+    "Nro Siniestro": r.Nro_Siniestro || "",
+    CIE10: r.CIE10 || "",
+    Observacion: r.Observacion || "",
+    Descripcion: r.Descripcion || "",
+    Prestador: r.Prestador || "",
+    "Envio Denuncia": r["Envio Denuncia"] || "",
+    createdBy: r.createdBy || "",
+    createdAt: r.createdAt || "",
+    updatedBy: r.updatedBy || "",
+    updatedAt: r.updatedAt || ""
+  }));
+
+  const ws = window.XLSX.utils.json_to_sheet(data);
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, "Registros");
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  window.XLSX.writeFile(wb, `registros_art_${stamp}.xlsx`);
+}
+
+function exportHistoricoPDF() {
+  const jsPDFCtor = window.jspdf?.jsPDF;
+  if (!jsPDFCtor) {
+    alert("Falta jsPDF. Revisá los <script> de jsPDF en el HTML.");
+    return;
+  }
+  const rows = getFilteredHistorico();
+  if (!rows.length) return alert("No hay registros para exportar.");
+
+  const doc = new jsPDFCtor({ orientation: "landscape", unit: "pt", format: "a4" });
+  const stamp = new Date().toLocaleString();
+
+  doc.setFontSize(14);
+  doc.text("Registros Casos ART - Reporte", 40, 32);
+  doc.setFontSize(10);
+  doc.text(`Generado: ${stamp}`, 40, 48);
+
+  const head = [[
+    "DNI", "Nombre", "Provincia", "Area", "Ubicacion",
+    "Desde", "Hasta", "Dias", "Dias Mes", "Obs", "Siniestro"
+  ]];
+
+  const body = rows.map(r => ([
+    r.DNI || "",
+    r.Nombre || "",
+    r.Provincia || "",
+    r.Area || "",
+    r.Ubicacion || "",
+    r.Desde || "",
+    r.Hasta || "",
+    String(r["Dias_ Caidos"] ?? ""),
+    String(r["Dias_ Caidos Mes (desde DESDE)"] ?? ""),
+    r.Observacion || "",
+    r.Nro_Siniestro || ""
+  ]));
+
+  if (typeof doc.autoTable !== "function") {
+    alert("Falta el plugin jsPDF-AutoTable. Revisá el <script> de jspdf-autotable en el HTML.");
+    return;
+  }
+
+  doc.autoTable({
+    head,
+    body,
+    startY: 62,
+    styles: { fontSize: 8, cellPadding: 3 },
+    headStyles: { fontSize: 8 },
+    margin: { left: 40, right: 40 }
+  });
+
+  const stampFile = new Date().toISOString().slice(0, 10);
+  doc.save(`reporte_registros_art_${stampFile}.pdf`);
+}
+
+function bindExportButtons() {
+  const idsExcel = ["btnExportExcel", "btnExcel", "btnReporteExcel", "btnDescargarExcel"];
+  const idsPdf = ["btnExportPdf", "btnExportPDF", "btnPdf", "btnReportePDF", "btnDescargarPDF"];
+
+  idsExcel.forEach(id => document.getElementById(id)?.addEventListener("click", exportHistoricoExcel));
+  idsPdf.forEach(id => document.getElementById(id)?.addEventListener("click", exportHistoricoPDF));
+}
+
+// Bind extras
+bindDiasAutoCalc();
+bindExportButtons();
+
+// Asegura que al guardar/actualizar se recalculen (por si el usuario no tocó el campo)
+const _oldGetFormData = getFormData;
+getFormData = function() {
+  // fuerza recálculo antes de leer
+  syncDiasFields({ force: true });
+  return _oldGetFormData();
+};

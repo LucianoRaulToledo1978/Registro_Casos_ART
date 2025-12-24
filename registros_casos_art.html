@@ -209,59 +209,57 @@
         <input type="month" id="fMes" />
       </div>
 
-      <div class="actions" style="align-self:end">
-        <button class="btn2" id="btnAplicarFiltros">Aplicar</button>
-        <button class="btn3" id="btnExportExcel">Exportar Excel</button>
-        <button class="btn3" id="btnExportPDF">Exportar PDF</button>
-      </div>
-    </div>
 
-    <p class="muted" id="contadorHistorico"></p>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>DNI</th>
-            <th>Nombre</th>
-            <th>Provincia</th>
-            <th>Área</th>
-            <th>Ubicación</th>
-            <th>Desde</th>
-            <th>Hasta</th>
-            <th>Días Total</th>
-            <th>Días Mes (DESDE)</th>
-            <th>Obs</th>
-            <th>N° Siniestro</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyHistorico"></tbody>
-      </table>
-    </div>
-
-    <div class="actions">
-      <button class="btn2" id="btnBorrarHistorico">Borrar histórico (local)</button>
-      <span class="status" id="estadoHistorico"></span>
+          <div class="actions" style="align-self:end">
+      <button class="btn2" id="btnAplicarFiltros">Aplicar</button>
+      <button class="btn3" id="btnExportExcel">Exportar Excel</button>
+      <button class="btn3" id="btnExportPDF">Exportar PDF</button>
     </div>
   </div>
 
- 
+  <p class="muted" id="contadorHistorico"></p>
 
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>DNI</th>
+          <th>Nombre</th>
+          <th>Provincia</th>
+          <th>Área</th>
+          <th>Ubicación</th>
+          <th>Desde</th>
+          <th>Hasta</th>
+          <th>Días Total</th>
+          <th>Días Mes (DESDE)</th>
+          <th>Obs</th>
+          <th>N° Siniestro</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyHistorico"></tbody>
+    </table>
+  </div>
+
+  <div class="actions">
+    <button class="btn2" id="btnBorrarHistorico">Borrar histórico (local)</button>
+    <span class="status" id="estadoHistorico"></span>
+  </div>
+</div>
+
+<!-- Config global -->
+<script src="./js/config.js"></script>
 
 <!-- PDF -->
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 
-<!-- Config global (window.FIREBASE_CONFIG, etc.) -->
-<script src="./js/config.js"></script>
-
-<!-- SheetJS -->
+<!-- Excel -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <!-- App -->
 <script type="module" src="./js/app.js"></script>
-
 
 </body>
 </html>
