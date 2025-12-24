@@ -482,6 +482,86 @@ function getFormData() {
   };
 }
 
+/***********************
+ * CÁLCULO DÍAS CAÍDOS
+ * - TOTAL: inclusive (Hasta - Desde + 1)
+ * - MES (desde DESDE): solape con el mes de "Desde"
+ * - MES elegido: solape con el mes seleccionado en #mesCalculo (type="month")
+ ***********************/
+function _parseYMD(s){
+  if(!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if(m){
+    const y=+m[1], mo=+m[2], d=+m[3];
+    return new Date(y, mo-1, d);
+  }
+  const m2 = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if(m2){
+    const d=+m2[1], mo=+m2[2], y=+m2[3];
+    return new Date(y, mo-1, d);
+  }
+  return null;
+}
+function _daysInclusive(a,b){
+  if(!a||!b) return "";
+  const A=new Date(a.getFullYear(),a.getMonth(),a.getDate());
+  const B=new Date(b.getFullYear(),b.getMonth(),b.getDate());
+  const diff = Math.floor((B-A)/86400000)+1;
+  return diff>0 ? String(diff) : "";
+}
+function _overlapDays(a1,a2,b1,b2){
+  if(!a1||!a2||!b1||!b2) return "";
+  const s = a1>b1 ? a1 : b1;
+  const e = a2<b2 ? a2 : b2;
+  return _daysInclusive(s,e);
+}
+
+function syncDiasFields({force=false} = {}){
+  const desdeStr = $("desde")?.value || "";
+  const hastaStr = $("hasta")?.value || "";
+  const mesKey = $("mesCalculo")?.value || ""; // YYYY-MM
+
+  const desde = _parseYMD(desdeStr);
+  const hasta = _parseYMD(hastaStr);
+
+  if(force && (!desde || !hasta)){
+    if($("diasTotal")) $("diasTotal").value = "";
+    if($("diasMesActual")) $("diasMesActual").value = "";
+    if($("diasMesElegido")) $("diasMesElegido").value = "";
+    return;
+  }
+
+  const total = _daysInclusive(desde, hasta);
+
+  let mesDesde = "";
+  if(desde && hasta){
+    const first = new Date(desde.getFullYear(), desde.getMonth(), 1);
+    const last  = new Date(desde.getFullYear(), desde.getMonth()+1, 0);
+    mesDesde = _overlapDays(desde, hasta, first, last);
+  }
+
+  let mesElegido = "";
+  if(mesKey && /^\d{4}-\d{2}$/.test(mesKey) && desde && hasta){
+    const [y, m] = mesKey.split("-").map(Number);
+    const first = new Date(y, m-1, 1);
+    const last  = new Date(y, m, 0);
+    mesElegido = _overlapDays(desde, hasta, first, last);
+  }
+
+  if($("diasTotal")) $("diasTotal").value = total;
+  if($("diasMesActual")) $("diasMesActual").value = mesDesde;
+  if($("diasMesElegido")) $("diasMesElegido").value = mesElegido;
+}
+
+function bindDiasAutoCalc(){
+  ["desde","hasta","mesCalculo","fMes"].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener("change", ()=>syncDiasFields({force:true}));
+    el.addEventListener("input",  ()=>syncDiasFields({force:false}));
+  });
+}
+
 
 /***********************
  * GUARDAR / ACTUALIZAR (Firestore)
@@ -493,6 +573,7 @@ $("btnGuardar")?.addEventListener("click", async () => {
 
   try {
     setText("estadoGuardar", "Guardando en la nube...");
+    syncDiasFields({ force: true });
     const data = getFormData();
 
     const newId = await window.FB.createRegistro(data, CURRENT_USER_EMAIL);
@@ -518,6 +599,7 @@ $("btnActualizar")?.addEventListener("click", async () => {
 
   try {
     setText("estadoGuardar", "Actualizando en la nube...");
+    syncDiasFields({ force: true });
     const data = getFormData();
 
     await window.FB.updateRegistro(editingId, data, CURRENT_USER_EMAIL);
@@ -726,3 +808,99 @@ $("btnBorrarHistorico")?.addEventListener("click", async () => {
     setText("estadoHistorico", "❌ Error borrando en Firebase (mirá consola).");
   }
 });
+
+/***********************
+ * EXPORT (Excel / PDF)
+ ***********************/
+function _getHistoricoFiltrado(){
+  const all = getRegistros();
+  return applyFilters(all);
+}
+
+function exportToExcel(){
+  try{
+    if(!window.XLSX) return alert("Falta XLSX (SheetJS). Revisá el <script> de xlsx.");
+    const rows = _getHistoricoFiltrado();
+    if(!rows.length) return alert("No hay registros para exportar (según filtros).");
+
+    const data = rows.map(r=>({
+      "ID": r.id || "",
+      "Fecha": r.Fecha || "",
+      "DNI": r.DNI || "",
+      "Nombre": r.Nombre || "",
+      "Provincia": r.Provincia || "",
+      "Área": r.Area || "",
+      "Ubicación": r.Ubicacion || "",
+      "Desde": r.Desde || "",
+      "Hasta": r.Hasta || "",
+      "Días Total": r["Dias_ Caidos"] ?? "",
+      "Días Mes (DESDE)": r["Dias_ Caidos Mes (desde DESDE)"] ?? "",
+      "Obs": r.Observacion || "",
+      "N° Siniestro": r.Nro_Siniestro || ""
+    }));
+
+    const ws = window.XLSX.utils.json_to_sheet(data);
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "Registros");
+    window.XLSX.writeFile(wb, `registros_art_${new Date().toISOString().slice(0,10)}.xlsx`);
+  }catch(e){
+    console.error(e);
+    alert("Error exportando Excel (mirá consola).");
+  }
+}
+
+function exportToPDF(){
+  try{
+    const rows = _getHistoricoFiltrado();
+    if(!rows.length) return alert("No hay registros para exportar (según filtros).");
+
+    const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+    if(!jsPDF) return alert("Falta jsPDF. Revisá los <script> de jspdf y autotable.");
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    doc.setFontSize(12);
+    doc.text("Registros Casos ART (filtrado)", 40, 30);
+
+    const body = rows.map(r=>[
+      r.Fecha || "",
+      r.DNI || "",
+      r.Nombre || "",
+      r.Provincia || "",
+      r.Area || "",
+      r.Ubicacion || "",
+      r.Desde || "",
+      r.Hasta || "",
+      r["Dias_ Caidos"] ?? "",
+      r["Dias_ Caidos Mes (desde DESDE)"] ?? "",
+      r.Observacion || "",
+      r.Nro_Siniestro || ""
+    ]);
+
+    doc.autoTable({
+      startY: 45,
+      head: [[
+        "Fecha","DNI","Nombre","Provincia","Área","Ubicación","Desde","Hasta",
+        "Días Total","Días Mes (DESDE)","Obs","N° Siniestro"
+      ]],
+      body,
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fontSize: 8 }
+    });
+
+    doc.save(`reporte_art_${new Date().toISOString().slice(0,10)}.pdf`);
+  }catch(e){
+    console.error(e);
+    alert("Error exportando PDF (mirá consola).");
+  }
+}
+
+function bindExportButtons(){
+  document.getElementById("btnExportExcel")?.addEventListener("click", exportToExcel);
+  document.getElementById("btnExportPDF")?.addEventListener("click", exportToPDF);
+}
+
+// ✅ Bindings extra
+bindDiasAutoCalc();
+bindExportButtons();
+// ✅ cálculo inicial
+syncDiasFields({ force: true });
