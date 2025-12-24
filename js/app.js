@@ -455,10 +455,28 @@ function cargarRegistroEnFormulario(r) {
 
 function parseISODate(v) {
   if (!v) return null;
-  // Espera "YYYY-MM-DD"
-  const d = new Date(v + "T00:00:00");
-  return Number.isNaN(d.getTime()) ? null : d;
+
+  // Caso estándar de <input type="date">: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const d = new Date(v + "T00:00:00");
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  // Caso común si llega como DD/MM/YYYY (por locale o carga manual)
+  const m = v.match(/^\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/);
+  if (m) {
+    const dd = Number(m[1]);
+    const mm = Number(m[2]);
+    const yy = Number(m[3]);
+    const d = new Date(yy, mm - 1, dd);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  // Último recurso (por si viene en otro formato)
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
+
 
 function startOfMonth(d) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -486,16 +504,21 @@ function overlapDays(a, b, x, y) {
 }
 
 function getSelectedMonthKeyForDiasElegido() {
-  // Prioridad: select explícito "mesElegido" (si lo tenés)
+  // Prioridad: input de "Mes a calcular" (tu HTML usa #mesCalculo)
+  const mc = document.getElementById("mesCalculo")?.value;
+  if (mc && /^\d{4}-\d{2}$/.test(mc)) return mc;
+
+  // Alternativa: select explícito "mesElegido" (si lo llegás a usar)
   const m1 = document.getElementById("mesElegido")?.value;
   if (m1 && /^\d{4}-\d{2}$/.test(m1)) return m1;
 
-  // Alternativa: filtro de mes "fMes" (si lo usás como selector)
+  // Alternativa: filtro de mes del histórico (#fMes)
   const m2 = document.getElementById("fMes")?.value;
-  if (m2 && /^\d{4}-\d{2}$/.test(m2) && m2.toLowerCase() !== "todos") return m2;
+  if (m2 && /^\d{4}-\d{2}$/.test(m2)) return m2;
 
   return "";
 }
+
 
 function computeDiasFromInputs() {
   const desdeStr = getVal("desde");
@@ -538,12 +561,53 @@ function syncDiasFields({ force = false } = {}) {
   if (mesSelEl && (force || !String(mesSelEl.value || "").trim())) mesSelEl.value = r.mesElegido;
 }
 
-function bindDiasAutoCalc() {
-  ["desde","hasta","mesElegido","fMes"].forEach(id => {
-    document.getElementById(id)?.addEventListener("change", () => syncDiasFields({ force: true }));
-    document.getElementById(id)?.addEventListener("input", () => syncDiasFields({ force: false }));
-  });
+
+// Si un registro ya está en histórico pero no tiene días calculados, los completa en memoria
+function ensureDiasOnRecord(r) {
+  if (!r) return r;
+  const tieneTotal = String(r["Dias_ Caidos"] ?? "").trim() !== "";
+  const tieneMes = String(r["Dias_ Caidos Mes (desde DESDE)"] ?? "").trim() !== "";
+  const tieneMesEleg = String(r["Dias_ Caidos Mes elegido"] ?? "").trim() !== "";
+
+  if (tieneTotal && tieneMes && tieneMesEleg) return r;
+
+  const desde = parseISODate(r.Desde || "");
+  const hasta = parseISODate(r.Hasta || "");
+  if (!desde || !hasta) return r;
+
+  const total = daysInclusive(desde, hasta);
+  const ms = startOfMonth(desde);
+  const me = endOfMonth(desde);
+  const mesDesde = overlapDays(desde, hasta, ms, me);
+
+  // Mes elegido: usa el mismo selector (mesCalculo/mesElegido/fMes) si el usuario lo eligió en UI
+  const mk = getSelectedMonthKeyForDiasElegido();
+  let mesElegido = "";
+  if (mk) {
+    const [yy, mm] = mk.split("-").map(Number);
+    const mStart = new Date(yy, mm - 1, 1);
+    const mEnd = new Date(yy, mm, 0);
+    mesElegido = overlapDays(desde, hasta, mStart, mEnd);
+  }
+
+  if (!tieneTotal) r["Dias_ Caidos"] = total;
+  if (!tieneMes) r["Dias_ Caidos Mes (desde DESDE)"] = mesDesde;
+  if (!tieneMesEleg) r["Dias_ Caidos Mes elegido"] = mesElegido;
+
+  return r;
 }
+function bindDiasAutoCalc() {
+  ["desde", "hasta", "mesCalculo", "mesElegido", "fMes"].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("change", () => syncDiasFields({ force: true }));
+    el.addEventListener("input", () => syncDiasFields({ force: false }));
+  });
+
+  // Inicial: si ya hay fechas cargadas (por edición / autocompleta), completa al cargar
+  syncDiasFields({ force: true });
+}
+
 
 function getVal(id) {
   return document.getElementById(id)?.value ?? "";
@@ -697,6 +761,7 @@ function renderHistorico() {
   tb.innerHTML = "";
 
   for (const r of filtered) {
+    ensureDiasOnRecord(r);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="mono">${escapeHtml(r.id)}</td>
