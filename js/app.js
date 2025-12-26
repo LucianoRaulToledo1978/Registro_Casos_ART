@@ -748,9 +748,18 @@ $("tbodyHistorico")?.addEventListener("click", async (e) => {
   }
 
   if (action === "delete") {
+
+    // 🔒 1) PEDIR CONTRASEÑA
+    if (!askDeletePassword("eliminar ESTE registro")) {
+      setText("estadoHistorico", "Contraseña incorrecta. No se eliminó el registro.");
+      return;
+    }
+
+    // ❓ 2) CONFIRMACIÓN
     if (!confirm("¿Eliminar este registro?")) return;
 
     try {
+      // 🗑️ 3) BORRADO REAL
       setText("estadoHistorico", "Eliminando en la nube...");
       await window.FB.deleteRegistro(id);
 
@@ -761,12 +770,14 @@ $("tbodyHistorico")?.addEventListener("click", async (e) => {
       setText("estadoHistorico", "Registro eliminado ✅");
       refrescarFiltros();
       renderHistorico();
+
     } catch (e2) {
       console.error(e2);
       setText("estadoHistorico", "❌ Error al eliminar (mirá consola).");
     }
   }
 });
+
 
 /***********************
  * BORRAR HISTÓRICO (Firestore)
@@ -775,10 +786,7 @@ $("btnBorrarHistorico")?.addEventListener("click", async () => {
   const all = getRegistros();
   if (all.length === 0) return setText("estadoHistorico", "No hay registros para borrar.");
 
-//   if (!askDeletePassword("borrar registros del histórico")) {
-//   setText("estadoHistorico", "Contraseña incorrecta. No se borró nada.");
-//   return;
-// }
+
 
 
   const filtered = applyFilters(all);
