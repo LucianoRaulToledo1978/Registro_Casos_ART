@@ -775,10 +775,10 @@ $("btnBorrarHistorico")?.addEventListener("click", async () => {
   const all = getRegistros();
   if (all.length === 0) return setText("estadoHistorico", "No hay registros para borrar.");
 
-  if (!askDeletePassword("borrar registros del histórico")) {
-  setText("estadoHistorico", "Contraseña incorrecta. No se borró nada.");
-  return;
-}
+//   if (!askDeletePassword("borrar registros del histórico")) {
+//   setText("estadoHistorico", "Contraseña incorrecta. No se borró nada.");
+//   return;
+// }
 
 
   const filtered = applyFilters(all);
@@ -796,13 +796,18 @@ $("btnBorrarHistorico")?.addEventListener("click", async () => {
   }
 
   // 🔒 Pedimos contraseña SOLO si va a borrar TODO
-  if (vaABorrarTodo) {
-    const okPass = askDeletePassword("BORRAR TODO el histórico");
-    if (!okPass) {
-      setText("estadoHistorico", "Contraseña incorrecta. No se borró nada.");
-      return;
-    }
-  }
+  // 🔒 Pedimos contraseña SIEMPRE (filtrado o todo)
+const okPass = askDeletePassword(
+  hayFiltro
+    ? `borrar ${toDelete.length} registro(s) FILTRADOS`
+    : `BORRAR TODO el histórico (${toDelete.length})`
+);
+
+if (!okPass) {
+  setText("estadoHistorico", "Contraseña incorrecta. No se borró nada.");
+  return;
+}
+
 
   const ids = toDelete.map(r => r.id).filter(Boolean);
   if (ids.length === 0) return setText("estadoHistorico", "No hay IDs para borrar.");
