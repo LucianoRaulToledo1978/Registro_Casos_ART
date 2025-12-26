@@ -779,11 +779,23 @@ $("btnBorrarHistorico")?.addEventListener("click", async () => {
   const hayFiltro = filtered.length !== all.length;
 
   let toDelete = all;
+  let vaABorrarTodo = true;
+
   if (hayFiltro) {
     const borrarFiltrado = confirm(
       `Tenés filtros aplicados.\n\nOK = borrar SOLO lo filtrado (${filtered.length})\nCancelar = borrar TODO (${all.length})`
     );
     toDelete = borrarFiltrado ? filtered : all;
+    vaABorrarTodo = !borrarFiltrado; // ✅ si canceló, eligió BORRAR TODO
+  }
+
+  // 🔒 Pedimos contraseña SOLO si va a borrar TODO
+  if (vaABorrarTodo) {
+    const okPass = askDeletePassword("BORRAR TODO el histórico");
+    if (!okPass) {
+      setText("estadoHistorico", "Contraseña incorrecta. No se borró nada.");
+      return;
+    }
   }
 
   const ids = toDelete.map(r => r.id).filter(Boolean);
