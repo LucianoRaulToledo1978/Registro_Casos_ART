@@ -775,6 +775,12 @@ $("btnBorrarHistorico")?.addEventListener("click", async () => {
   const all = getRegistros();
   if (all.length === 0) return setText("estadoHistorico", "No hay registros para borrar.");
 
+  if (!askDeletePassword("borrar registros del histórico")) {
+  setText("estadoHistorico", "Contraseña incorrecta. No se borró nada.");
+  return;
+}
+
+
   const filtered = applyFilters(all);
   const hayFiltro = filtered.length !== all.length;
 
