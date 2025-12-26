@@ -106,7 +106,8 @@ console.log("APP JS (Firebase)");
 
 // Password de borrado ya no se usa como seguridad real.
 // Si querés, lo sacamos después.
-const DELETE_PASSWORD = "1234";
+// const DELETE_PASSWORD = "1234";
+window.DELETE_PASSWORD = "1234";
 
 // Helper $
 const $ = (id) => document.getElementById(id);
@@ -129,10 +130,15 @@ function normalizarDni(v) {
   return String(v || "").replace(/\D/g, "");
 }
 
-function askDeletePassword(accion) {
+// function askDeletePassword(accion) {
+//   const p = prompt(`Para ${accion}, ingresá la contraseña:`);
+//   return p === DELETE_PASSWORD;
+// }
+
+window.askDeletePassword = function (accion) {
   const p = prompt(`Para ${accion}, ingresá la contraseña:`);
-  return p === DELETE_PASSWORD;
-}
+  return p === window.DELETE_PASSWORD;
+};
 
 /* ===============================
    DOTACIÓN (Excel + IndexedDB cache)
@@ -750,7 +756,7 @@ $("tbodyHistorico")?.addEventListener("click", async (e) => {
   if (action === "delete") {
 
     // 🔒 1) PEDIR CONTRASEÑA
-    if (!askDeletePassword("eliminar ESTE registro")) {
+    if (!window.askDeletePassword("eliminar ESTE registro")) {
       setText("estadoHistorico", "Contraseña incorrecta. No se eliminó el registro.");
       return;
     }
