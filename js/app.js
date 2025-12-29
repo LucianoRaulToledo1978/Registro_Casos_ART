@@ -650,7 +650,7 @@ function applyFilters(arr) {
     if (p && (r.Provincia || "") !== p) return false;
     if (a && (r.Area || "") !== a) return false;
     if (m && monthKeyFromRecord(r) !== m) return false;
-    if (anc && String(r["Dias_ Caidos"] || "") !== anc) return false;
+    if (anc && String(r["TipoAccidente"] || "") !== anc) return false;
     if (obs && (r.Observacion || "") !== obs) return false;
     if (pers && (r.Personal || "") !== pers) return false;
 
@@ -668,6 +668,7 @@ function applyFilters(arr) {
     if (!match(r["Dias_ Caidos"], fc("fcDiasTotal"))) return false;
     if (!match(r["Dias_ Caidos Mes (desde DESDE)"], fc("fcDiasMes"))) return false;
     if (!match(r.Observacion, fc("fcObs"))) return false;
+    if (!match(r.TipoAccidente, fc("fcANC"))) return false;
     if (!match(r.Nro_Siniestro, fc("fcSiniestro"))) return false;
 
     return true;
@@ -697,6 +698,7 @@ function renderHistorico() {
       <td class="mono">${escapeHtml(r.Hasta || "")}</td>
       <td class="mono">${escapeHtml(r["Dias_ Caidos"] ?? "")}</td>
       <td class="mono">${escapeHtml(r["Dias_ Caidos Mes (desde DESDE)"] ?? "")}</td>
+      <td>${escapeHtml(r.TipoAccidente || "")}</td>
       <td>${escapeHtml(r.Observacion || "")}</td>
       <td class="mono">${escapeHtml(r.Nro_Siniestro || "")}</td>
       <td><button class="btn2 btn-mini" data-action="edit" data-id="${r.id}">Editar</button></td>
@@ -729,7 +731,7 @@ document.getElementById("btnRefrescar")?.addEventListener("click", renderHistori
 ["fProvincia","fArea","fMes","fANC","fObs","fPersonal"].forEach(id => $(id)?.addEventListener("change", renderHistorico));
 [
   "fcFecha","fcDni","fcNombre","fcProvincia","fcArea","fcUbicacion",
-  "fcDesde","fcHasta","fcDiasTotal","fcDiasMes","fcObs","fcSiniestro"
+  "fcDesde","fcHasta","fcDiasTotal","fcDiasMes","fcANC","fcObs","fcSiniestro"
 ].forEach(id => $(id)?.addEventListener("input", renderHistorico));
 
 /***********************
@@ -860,6 +862,8 @@ function exportToExcel(){
     const rows = _getHistoricoFiltrado();
     if(!rows.length) return alert("No hay registros para exportar (según filtros).");
 
+    console.log(rows[0]);
+
     const data = rows.map(r=>({
       "ID": r.id || "",
       "Fecha": r.Fecha || "",
@@ -876,12 +880,15 @@ function exportToExcel(){
       "Hasta": r.Hasta || "",
       "Días Total": r["Dias_ Caidos"] ?? "",
       "Días Mes (DESDE)": r["Dias_ Caidos Mes (desde DESDE)"] ?? "",   
-      "A / NC": r.anc  || "", 
+      "A/NC": r.TipoAccidente  || "", 
       "N° Siniestro": r.Nro_Siniestro || "",
       "CIE-10": r.CIE10 || "",
-      "Gravedad": r.Gravedad || "",
+      "Gravedad": r.TipoDenuncia || "", // Moderada / Leve / Grave
+
+
       "Obs": r.Observacion || "",
-      "Descripción del hecho": r.Descripción_del_hecho || "",
+      "Descripción del hecho": r.Descripción_del_hecho ?? r.Descripcion_del_hecho ?? r.DescripcionHecho ?? r.descripcion ?? r.Descripcion ?? "",
+
       "Prestador":r.Prestador || ""
     }));
 
