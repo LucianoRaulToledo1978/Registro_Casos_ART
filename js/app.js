@@ -104,8 +104,8 @@ waitForFirebase();
 
 console.log("APP JS (Firebase)");
 
-// Password de borrado ya no se usa como seguridad real.
-// Si querés, lo sacamos después.
+
+
 // const DELETE_PASSWORD = "1234";
 window.DELETE_PASSWORD = "1234";
 
@@ -864,16 +864,25 @@ function exportToExcel(){
       "ID": r.id || "",
       "Fecha": r.Fecha || "",
       "DNI": r.DNI || "",
+      "Cuil": r.CUIL || "",
+      "Legajo": r.Legajo || "",
       "Nombre": r.Nombre || "",
+      "Ubicación": r.Ubicacion || "",
+      "Función": r.Funcion || "",
       "Provincia": r.Provincia || "",
       "Área": r.Area || "",
-      "Ubicación": r.Ubicacion || "",
+      "Personal":r.Personal || "" ,  
       "Desde": r.Desde || "",
       "Hasta": r.Hasta || "",
       "Días Total": r["Dias_ Caidos"] ?? "",
-      "Días Mes (DESDE)": r["Dias_ Caidos Mes (desde DESDE)"] ?? "",
+      "Días Mes (DESDE)": r["Dias_ Caidos Mes (desde DESDE)"] ?? "",   
+      "A / NC": r.anc  || "", 
+      "N° Siniestro": r.Nro_Siniestro || "",
+      "CIE-10": r.CIE10 || "",
+      "Gravedad": r.Gravedad || "",
       "Obs": r.Observacion || "",
-      "N° Siniestro": r.Nro_Siniestro || ""
+      "Descripción del hecho": r.Descripción_del_hecho || "",
+      "Prestador":r.Prestador || ""
     }));
 
     const ws = window.XLSX.utils.json_to_sheet(data);
@@ -941,3 +950,4 @@ bindDiasAutoCalc();
 bindExportButtons();
 // ✅ cálculo inicial
 syncDiasFields({ force: true });
+
