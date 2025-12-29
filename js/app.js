@@ -148,7 +148,7 @@ window.askDeletePassword = function (accion) {
 
 const DOT_DB_NAME = "art_app_db";
 const DOT_STORE = "dotacion";
-const DOT_DB_VERSION = 3; // 👈 SUBIMOS versión (antes era 1 o 2)
+const DOT_DB_VERSION = 4; // 👈 SUBIMOS versión (antes era 1 o 2)
 
 const DOT_CACHE_KEY = "dotacion_cache_v1";
 
@@ -222,7 +222,10 @@ function openDotDB() {
       if (!db.objectStoreNames.contains(DOT_STORE)) {
         db.createObjectStore(DOT_STORE, { keyPath: "key" });
       }
-    };
+      if (!db.objectStoreNames.contains("cie10")) {
+        db.createObjectStore("cie10");
+    }
+  };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -257,6 +260,115 @@ async function clearDotacionCache() {
     tx.onerror = () => reject(tx.error);
   });
 }
+
+
+// =====================
+// CIE-10 (Excel -> IndexedDB -> Map)
+// =====================
+const CIE_DB_NAME = "art_app_db";
+const CIE_STORE = "cie10";
+const CIE_CACHE_KEY = "cie10_cache_v1";
+
+let indexCie10 = new Map(); // codigo -> descripcion
+
+function openDB(name, version = 1, onUpgrade) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(name, version);
+    req.onupgradeneeded = () => onUpgrade?.(req.result);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function withStore(storeName, mode, fn) {
+  const db = await openDB(CIE_DB_NAME, 4, (db) => {
+    if (!db.objectStoreNames.contains(DOT_STORE)) db.createObjectStore(DOT_STORE); // si ya tenías dotación
+    if (!db.objectStoreNames.contains(CIE_STORE)) db.createObjectStore(CIE_STORE);
+  });
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, mode);
+    const store = tx.objectStore(storeName);
+    const result = fn(store);
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function cieSetCache(value) {
+  await withStore(CIE_STORE, "readwrite", (store) => store.put(value, CIE_CACHE_KEY));
+}
+async function cieGetCache() {
+  return await withStore(CIE_STORE, "readonly", (store) => store.get(CIE_CACHE_KEY));
+}
+
+function normalizarCie(code) {
+  return String(code || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+}
+
+// Detecta columnas típicas: "Codigo" / "CIE10" / "CIE-10" y "Descripcion"
+function mapearFilasCie(rows) {
+  // rows: array de objetos (SheetJS)
+  // Buscamos keys posibles
+  const keys = rows[0] ? Object.keys(rows[0]) : [];
+  const kCodigo =
+    keys.find(k => /^(codigo|c[oó]digo|cie10|cie-?10)$/i.test(k)) || "Codigo";
+  const kDesc =
+    keys.find(k => /^(descripcion|descripci[oó]n|detalle|diagnostico|diagnóstico)$/i.test(k)) || "Descripcion";
+
+  const map = new Map();
+  for (const r of rows) {
+    const cod = normalizarCie(r[kCodigo]);
+    const desc = String(r[kDesc] ?? "").trim();
+    if (cod) map.set(cod, desc);
+  }
+  return map;
+}
+
+async function loadCie10FromExcel(file) {
+  if (!window.XLSX) throw new Error("Falta XLSX (SheetJS).");
+
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array" });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+  const map = mapearFilasCie(rows);
+
+  // Guardamos en cache como array (para persistir) y armamos Map en memoria
+  await cieSetCache({ rows, savedAt: new Date().toISOString() });
+  indexCie10 = map;
+
+  return { count: indexCie10.size };
+}
+
+async function initCie10Cache() {
+  const cached = await cieGetCache();
+  if (cached?.rows?.length) {
+    indexCie10 = mapearFilasCie(cached.rows);
+    return { loaded: true, count: indexCie10.size, savedAt: cached.savedAt };
+  }
+  return { loaded: false, count: 0 };
+}
+
+function getCieDescripcion(code) {
+  const c = normalizarCie(code);
+  return indexCie10.get(c) || "";
+}
+
+
+
+
+
+
+
+
+
+
+
 
 /***********************
  * UI handlers Dotación
@@ -337,6 +449,72 @@ $("btnBorrarCache")?.addEventListener("click", async () => {
     setText("estadoCache", "❌ No se pudo borrar cache (mirá consola).");
   }
 });
+
+// Inicializa cache CIE10 al cargar
+initCie10Cache().then(info => {
+  if (info.loaded) setText("estadoCie10", `✅ CIE-10 cargado (${info.count} códigos)`);
+  else setText("estadoCie10", "ℹ️ Subí CIE10.xlsx para habilitar descripción automática.");
+}).catch(() => {
+  setText("estadoCie10", "⚠️ No se pudo leer cache CIE-10.");
+});
+
+// Subida de CIE10.xlsx
+$("fileCIE10")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  try {
+    setText("estadoCie10", "Cargando CIE-10...");
+    const { count } = await loadCie10FromExcel(file);
+    setText("estadoCie10", `✅ CIE-10 cargado (${count} códigos).`);
+  } catch (err) {
+    console.error(err);
+    alert("No se pudo cargar CIE-10. Revisá que sea un .xlsx válido.");
+    setText("estadoCie10", "❌ Error al cargar CIE-10.");
+  } finally {
+    e.target.value = "";
+  }
+});
+
+// Cuando escribís el código CIE10, completa la descripción
+$("cie10")?.addEventListener("input", () => {
+  const code = $("cie10").value;
+  const desc = getCieDescripcion(code);
+
+  if ($("cie10Desc")) $("cie10Desc").value = desc;
+});
+
+
+// =====================
+// CARGA EXCEL CIE-10
+// =====================
+$("fileCIE10")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  try {
+    setText("estadoCie10", "⏳ Cargando CIE-10...");
+
+    const { count } = await loadCie10FromExcel(file);
+
+    setText(
+      "estadoCie10",
+      `✅ CIE-10 cargado correctamente (${count} códigos)`
+    );
+  } catch (err) {
+    console.error(err);
+    alert("No se pudo cargar el archivo CIE-10.");
+    setText("estadoCie10", "❌ Error al cargar CIE-10");
+  } finally {
+    e.target.value = ""; // permite volver a subir el mismo archivo
+  }
+});
+
+
+
+
+
+
 
 /***********************
  * Buscar empleado por DNI (autocompleta)
@@ -520,6 +698,7 @@ function getFormData() {
 
     Nro_Siniestro: getVal("nroSiniestro"),
     CIE10: getVal("cie10"),
+    CIE10_Desc: getCieDescripcion(getVal("cie10")),
     Observacion: getVal("observacion"),
     Descripcion: getVal("descripcion"),
     Prestador: getVal("prestador"),
@@ -922,6 +1101,8 @@ function exportToExcel(){
       "A/NC": r.TipoAccidente  || "", 
       "N° Siniestro": r.Nro_Siniestro || "",
       "CIE-10": r.CIE10 || "",
+      "Descripción CIE-10": r.CIE10_Desc || getCieDescripcion(r.CIE10) || "",
+
       "Gravedad": r.TipoDenuncia || "", // Moderada / Leve / Grave
 
 
