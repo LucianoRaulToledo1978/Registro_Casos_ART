@@ -449,6 +449,45 @@ function cargarRegistroEnFormulario(r) {
   if ($("envioDenuncia")) $("envioDenuncia").value = r["Envio Denuncia"] || "";
 }
 
+// funcion para buscar y caragar desde el boton"buscar y cargar"//
+function buscarRegistroParaEdicion() {
+  const dniBuscado = normalizarDni(getVal("buscarRegDni"));
+  const sinBuscado = String(getVal("buscarRegSiniestro") || "").trim();
+
+  if (!dniBuscado && !sinBuscado) {
+    setText("estadoEdicion", "⚠️ Ingresá DNI o N° de siniestro para buscar.");
+    return;
+  }
+
+  const registros = getRegistros();
+
+  const rec = registros.find(r => {
+    const dniOk = dniBuscado && normalizarDni(r.DNI) === dniBuscado;
+    const sinOk = sinBuscado && String(r.Nro_Siniestro || "").trim() === sinBuscado;
+    return dniOk || sinOk;
+  });
+
+  if (!rec) {
+    setText("estadoEdicion", "❌ No se encontró el registro con esos datos.");
+    return;
+  }
+
+  cargarRegistroEnFormulario(rec);
+  entrarModoEdicion(rec);
+  setText("estadoEdicion", `✏️ Editando ID: ${rec.id}`);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ✅ Botón "Buscar y cargar"
+$("btnBuscarRegistro")?.addEventListener("click", buscarRegistroParaEdicion);
+
+// ✅ Enter desde los inputs
+["buscarRegDni", "buscarRegSiniestro"].forEach(id => {
+  $(id)?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") buscarRegistroParaEdicion();
+  });
+});
+
 
 
 function getVal(id) {
