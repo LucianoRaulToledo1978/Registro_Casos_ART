@@ -485,6 +485,11 @@ $("cie10")?.addEventListener("input", () => {
 });
 
 
+
+
+
+
+
 // =====================
 // CARGA EXCEL CIE-10
 // =====================
@@ -542,6 +547,9 @@ $("btnLimpiar")?.addEventListener("click", () => {
   clearDotacionFields();
   setText("estadoBusqueda", "");
 });
+
+
+
 
 // =====================
 // REGISTROS (Firestore)
@@ -673,6 +681,12 @@ function getVal(id) {
 }
 
 function getFormData() {
+
+  const desdeStr = getVal("desde");
+  const hastaStr = getVal("hasta");
+
+  const diasPorMesCalc = calcDiasPorMes(desdeStr, hastaStr);
+
   return {
     DNI: normalizarDni(getVal("dni")),
     CUIL: getVal("cuil").trim(),
@@ -702,9 +716,56 @@ function getFormData() {
     Observacion: getVal("observacion"),
     Descripcion: getVal("descripcion"),
     Prestador: getVal("prestador"),
-    "Envio Denuncia": getVal("envioDenuncia")
+    "Envio Denuncia": getVal("envioDenuncia"),
+    diasPorMes: diasPorMesCalc,
+
   };
 }
+
+async function migrarDiasPorMesHistorico() {
+  try {
+    setText("estadoHistorico", "⏳ Recalculando histórico...");
+    await loadRegistrosFromCloud();
+
+    const registros = getRegistros();
+    let ok = 0, fail = 0;
+
+    for (const r of registros) {
+      try {
+        const diasPorMes = calcDiasPorMes(r.Desde, r.Hasta);
+        if (!Object.keys(diasPorMes).length) continue;
+
+        await window.FB.updateRegistro(r.id, {
+          diasPorMes
+        });
+
+        ok++;
+      } catch (e1) {
+        console.error("Error en registro", r.id, e1);
+        fail++;
+      }
+    }
+
+    setText(
+      "estadoHistorico",
+      `✅ Migración finalizada — OK: ${ok} | Error: ${fail}`
+    );
+
+    await loadRegistrosFromCloud();
+    refrescarFiltros();
+    renderHistorico();
+
+  } catch (e) {
+    console.error(e);
+    setText("estadoHistorico", "❌ Error en migración (ver consola)");
+  }
+}
+
+$("btnMigrarDiasPorMes")?.addEventListener("click", () => {
+  if (!confirm("Esto actualizará los registros históricos en la nube. ¿Continuar?")) return;
+  migrarDiasPorMesHistorico();
+});
+
 
 /***********************
  * CÁLCULO DÍAS CAÍDOS
@@ -733,6 +794,50 @@ function _daysInclusive(a,b){
   const diff = Math.floor((B-A)/86400000)+1;
   return diff>0 ? String(diff) : "";
 }
+
+function calcDiasPorMes(desdeStr, hastaStr) {
+  const desde = _parseYMD(desdeStr);
+  const hasta = _parseYMD(hastaStr);
+  if (!desde || !hasta) return {};
+
+  const d0 = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  const d1 = new Date(hasta.getFullYear(), hasta.getMonth(), hasta.getDate());
+  if (d1 < d0) return {};
+
+  const out = {};
+  let y = d0.getFullYear();
+  let m = d0.getMonth();
+
+  const endY = d1.getFullYear();
+  const endM = d1.getMonth();
+
+  while (y < endY || (y === endY && m <= endM)) {
+    const first = new Date(y, m, 1);
+    const last  = new Date(y, m + 1, 0);
+    const v = _overlapDays(d0, d1, first, last);
+    const n = v === "" ? 0 : Number(v);
+
+    if (n > 0) {
+      const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+      out[key] = n;
+    }
+
+    m++;
+    if (m === 12) {
+      m = 0;
+      y++;
+    }
+  }
+
+  return out;
+}
+
+
+
+
+
+
+
 function _overlapDays(a1,a2,b1,b2){
   if(!a1||!a2||!b1||!b2) return "";
   const s = a1>b1 ? a1 : b1;
@@ -1084,12 +1189,20 @@ function _getHistoricoFiltrado(){
 function exportToExcel(){
   try{
     if(!window.XLSX) return alert("Falta XLSX (SheetJS). Revisá el <script> de xlsx.");
-    const rows = _getHistoricoFiltrado();
+
+    const rows = _getHistoricoFiltrado(); // tu función actual
     if(!rows.length) return alert("No hay registros para exportar (según filtros).");
 
-    console.log(rows[0]);
+    const mesFiltro = document.getElementById("fMes")?.value || ""; // "YYYY-MM" o ""
 
-    const data = rows.map(r=>({
+    const getDiasMesSeleccionado = (r) => {
+      if(!mesFiltro) return "";
+      const map = (r?.diasPorMes && typeof r.diasPorMes === "object") ? r.diasPorMes : {};
+      const n = Number(map?.[mesFiltro] ?? 0);
+      return n > 0 ? n : "";
+    };
+
+    const data = rows.map(r => ({
       "ID": r.id || "",
       "Fecha": r.Fecha || "",
       "DNI": r.DNI || "",
@@ -1100,34 +1213,49 @@ function exportToExcel(){
       "Función": r.Funcion || "",
       "Provincia": r.Provincia || "",
       "Área": r.Area || "",
-      "Personal":r.Personal || "" ,  
+      "Personal": r.Personal || "",
       "Desde": r.Desde || "",
       "Hasta": r.Hasta || "",
+
       "Días Total": r["Dias_ Caidos"] ?? "",
-      "Días Mes (DESDE)": r["Dias_ Caidos Mes (desde DESDE)"] ?? "",   
-      "A/NC": r.TipoAccidente  || "", 
+
+      // ✅ NUEVO: días del mes seleccionado (si hay filtro)
+      ...(mesFiltro ? { [`Días Mes (${mesFiltro})`]: getDiasMesSeleccionado(r) } : {}),
+
+      // ✅ Compatibilidad: lo que ya tenías fijo (mes de DESDE)
+      "Días Mes (DESDE)": r["Dias_ Caidos Mes (desde DESDE)"] ?? "",
+
+      "A/NC": r.TipoAccidente  || "",
       "N° Siniestro": r.Nro_Siniestro || "",
       "CIE-10": r.CIE10 || "",
       "Descripción CIE-10": r.CIE10_Desc || getCieDescripcion(r.CIE10) || "",
-
-      "Gravedad": r.TipoDenuncia || "", // Moderada / Leve / Grave
-
+      "Gravedad": r.TipoDenuncia || "",
 
       "Obs": r.Observacion || "",
-      "Descripción del hecho": r.Descripción_del_hecho ?? r.Descripcion_del_hecho ?? r.DescripcionHecho ?? r.descripcion ?? r.Descripcion ?? "",
+      "Descripción del hecho":
+        r["Descripción_del_hecho"] ??
+        r.Descripcion_del_hecho ??
+        r.DescripcionHecho ??
+        r.descripcion ??
+        r.Descripcion ??
+        "",
 
-      "Prestador":r.Prestador || ""
+      "Prestador": r.Prestador || ""
     }));
 
     const ws = window.XLSX.utils.json_to_sheet(data);
     const wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Registros");
-    window.XLSX.writeFile(wb, `registros_art_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+    const nombre = `registros_art_${new Date().toISOString().slice(0,10)}${mesFiltro ? "_" + mesFiltro : ""}.xlsx`;
+    window.XLSX.writeFile(wb, nombre);
+
   }catch(e){
     console.error(e);
     alert("Error exportando Excel (mirá consola).");
   }
 }
+
 
 function exportToPDF(){
   try{
@@ -1174,10 +1302,136 @@ function exportToPDF(){
   }
 }
 
-function bindExportButtons(){
-  document.getElementById("btnExportExcel")?.addEventListener("click", exportToExcel);
-  document.getElementById("btnExportPDF")?.addEventListener("click", exportToPDF);
+// =======================
+// EXPORTES (Excel / PDF) con diasPorMes
+// =======================
+function getMesFiltroActual() {
+  return $("fMes")?.value || ""; // "YYYY-MM" o ""
 }
+
+function getDiasPorMesValue(r, mesKey) {
+  const map = r?.diasPorMes && typeof r.diasPorMes === "object" ? r.diasPorMes : {};
+  const n = Number(map?.[mesKey] ?? 0);
+  return n > 0 ? n : 0;
+}
+
+// arma filas según lo que estás viendo (filtros aplicados)
+function buildExportRowsFromHistorico() {
+  const all = getRegistros();
+  const filtered = applyFilters(all);
+
+  const mesFiltro = getMesFiltroActual();
+  const hasMes = !!mesFiltro;
+
+  return filtered.map(r => {
+    const diasMes = hasMes ? getDiasPorMesValue(r, mesFiltro) : "";
+
+    return {
+      ID: r.id ?? "",
+      DNI: r.DNI ?? "",
+      Nombre: r.Nombre ?? "",
+      Provincia: r.Provincia ?? "",
+      Area: r.Area ?? "",
+      Ubicacion: r.Ubicacion ?? "",
+      Desde: r.Desde ?? "",
+      Hasta: r.Hasta ?? "",
+      "Dias Caidos Total": r["Dias_ Caidos"] ?? "",
+      ...(hasMes ? { [`Dias Caidos ${mesFiltro}`]: diasMes } : {}),
+      TipoAccidente: r.TipoAccidente ?? "",
+      Observacion: r.Observacion ?? "",
+      Siniestro: r.Nro_Siniestro ?? ""
+    };
+  });
+}
+
+function exportHistoricoExcel() {
+  try {
+    if (typeof XLSX === "undefined") throw new Error("XLSX no disponible");
+
+    const rows = buildExportRowsFromHistorico();
+    if (!rows.length) {
+      alert("No hay registros para exportar con los filtros actuales.");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Historico");
+
+    const mes = getMesFiltroActual();
+    const fileName = `historico_art${mes ? "_" + mes : ""}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+
+  } catch (e) {
+    console.error(e);
+    alert("Error exportando Excel. Mirá consola.");
+  }
+}
+
+function exportHistoricoPDF() {
+  try {
+    const jsPDF = window.jspdf?.jsPDF;
+    if (!jsPDF) throw new Error("jsPDF no disponible (window.jspdf.jsPDF)");
+
+    const rows = buildExportRowsFromHistorico();
+    if (!rows.length) {
+      alert("No hay registros para exportar con los filtros actuales.");
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+
+    // ✅ chequear autotable después de crear doc
+    if (typeof doc.autoTable !== "function") {
+      throw new Error("autoTable no disponible (falta cargar jspdf-autotable o no enganchó con jsPDF)");
+    }
+
+    const mes = getMesFiltroActual();
+    const title = `Histórico ART${mes ? " - " + mes : ""}`;
+
+    doc.setFontSize(12);
+    doc.text(title, 40, 30);
+
+    const head = [Object.keys(rows[0])];
+    const body = rows.map(o => Object.values(o));
+
+    doc.autoTable({
+      head,
+      body,
+      startY: 45,
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fontSize: 8 },
+      margin: { left: 20, right: 20 }
+    });
+
+    const fileName = `historico_art${mes ? "_" + mes : ""}.pdf`;
+    doc.save(fileName);
+
+  } catch (e) {
+    console.error(e);
+    alert(`Error exportando PDF: ${e.message}`);
+  }
+}
+
+
+
+
+$("btnAplicarFiltros")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  renderHistorico();
+});
+
+$("btnExportExcel")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  exportToExcel(); // ✅ tu función adaptada a diasPorMes
+});
+
+$("btnExportPDF")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  exportHistoricoPDF(); // ✅ tu PDF corregido
+});
+
+
 
 // ✅ Bindings extra
 bindDiasAutoCalc();
