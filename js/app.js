@@ -757,12 +757,14 @@ function syncDiasFields({force=false} = {}){
 
   const total = _daysInclusive(desde, hasta);
 
-  let mesDesde = "";
-if(desde && hasta){
-  const first = new Date(desde.getFullYear(), desde.getMonth(), 1);
-  const last  = new Date(desde.getFullYear(), desde.getMonth()+1, 0);
-  mesDesde = _overlapDays(desde, hasta, first, last);
+  let mesActual = "";
+if (desde && hasta) {
+  const hoy = new Date(); // ✅ fecha actual (hoy)
+  const first = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const last  = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+  mesActual = _overlapDays(desde, hasta, first, last);
 }
+
 
 
 
@@ -775,7 +777,8 @@ if(desde && hasta){
   }
 
   if($("diasTotal")) $("diasTotal").value = total;
-  if($("diasMesActual")) $("diasMesActual").value = mesDesde;
+  if($("diasMesActual")) $("diasMesActual").value = mesActual;
+
 
 
   if($("diasMesElegido")) $("diasMesElegido").value = mesElegido;
