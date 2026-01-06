@@ -730,15 +730,22 @@ async function migrarDiasPorMesHistorico() {
     const registros = getRegistros();
     let ok = 0, fail = 0;
 
+    // ✅ hoy en formato YYYY-MM-DD
+    const hoy = new Date().toISOString().slice(0, 10);
+
     for (const r of registros) {
       try {
-        const diasPorMes = calcDiasPorMes(r.Desde, r.Hasta);
+        // ✅ normalizo si vienen con hora
+        const desde = (r.Desde || "").includes("T") ? r.Desde.slice(0, 10) : (r.Desde || "");
+        const hasta = (r.Hasta || "").includes("T") ? r.Hasta.slice(0, 10) : (r.Hasta || "");
+
+        // ✅ si no hay alta, calculo “a la fecha”
+        const fin = hasta || hoy;
+
+        const diasPorMes = calcDiasPorMes(desde, fin);
         if (!Object.keys(diasPorMes).length) continue;
 
-        await window.FB.updateRegistro(r.id, {
-          diasPorMes
-        });
-
+        await window.FB.updateRegistro(r.id, { diasPorMes });
         ok++;
       } catch (e1) {
         console.error("Error en registro", r.id, e1);
@@ -746,10 +753,7 @@ async function migrarDiasPorMesHistorico() {
       }
     }
 
-    setText(
-      "estadoHistorico",
-      `✅ Migración finalizada — OK: ${ok} | Error: ${fail}`
-    );
+    setText("estadoHistorico", `✅ Recalculado — OK: ${ok} | Error: ${fail}`);
 
     await loadRegistrosFromCloud();
     refrescarFiltros();
@@ -760,6 +764,9 @@ async function migrarDiasPorMesHistorico() {
     setText("estadoHistorico", "❌ Error en migración (ver consola)");
   }
 }
+
+
+
 
 $("btnMigrarDiasPorMes")?.addEventListener("click", () => {
   if (!confirm("Esto actualizará los registros históricos en la nube. ¿Continuar?")) return;
@@ -775,18 +782,25 @@ $("btnMigrarDiasPorMes")?.addEventListener("click", () => {
  ***********************/
 function _parseYMD(s){
   if(!s) return null;
+
+  // ✅ si viene ISO "2025-12-24T00:00:00.000Z", nos quedamos con "2025-12-24"
+  if (typeof s === "string" && s.includes("T")) s = s.slice(0, 10);
+
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if(m){
     const y=+m[1], mo=+m[2], d=+m[3];
     return new Date(y, mo-1, d);
   }
+
   const m2 = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
   if(m2){
     const d=+m2[1], mo=+m2[2], y=+m2[3];
     return new Date(y, mo-1, d);
   }
+
   return null;
 }
+
 function _daysInclusive(a,b){
   if(!a||!b) return "";
   const A=new Date(a.getFullYear(),a.getMonth(),a.getDate());
@@ -964,14 +978,31 @@ $("btnCancelarEdicion")?.addEventListener("click", () => {
 function fillSelect(selectId, options, placeholder = "Todos") {
   const sel = $(selectId);
   if (!sel) return;
+
+  // ✅ evita "options is not iterable" si options viene undefined/null/objeto
+  const safeOptions = Array.isArray(options) ? options : [];
+
   sel.innerHTML = `<option value="">${placeholder}</option>`;
-  for (const o of options) sel.innerHTML += `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`;
+  for (const o of safeOptions) {
+    sel.innerHTML += `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`;
+  }
 }
+
+
+
+
+
+
+
+
+
+
+
 
 function applyFilters(arr) {
   const p = $("fProvincia")?.value || "";
   const a = $("fArea")?.value || "";
-  const m = $("fMes")?.value || "";
+  const m = $("fMes")?.value || "";       // "YYYY-MM"
   const anc = $("fANC")?.value || "";
   const obs = $("fObs")?.value || "";
   const pers = $("fPersonal")?.value || "";
@@ -979,8 +1010,18 @@ function applyFilters(arr) {
   return arr.filter(r => {
     if (p && (r.Provincia || "") !== p) return false;
     if (a && (r.Area || "") !== a) return false;
-    if (m && monthKeyFromRecord(r) !== m) return false;
+
+    // ✅ FILTRO MES: ahora por diasPorMes (no por monthKeyFromRecord)
+    if (m) {
+      const diasMes = getDiasMesView(r, m);
+      if (!(Number(diasMes) > 0)) return false;
+    }
+
+    // 👇 OJO: en tu código fANC parece estar cargado con "días total"
+    // Si querías filtrar por A/NC, deberías llenar fANC con TipoAccidente.
+    // Mantengo tu lógica tal como la tenés:
     if (anc && String(r["TipoAccidente"] || "") !== anc) return false;
+
     if (obs && (r.Observacion || "") !== obs) return false;
     if (pers && (r.Personal || "") !== pers) return false;
 
@@ -996,7 +1037,12 @@ function applyFilters(arr) {
     if (!match(r.Area, fc("fcArea"))) return false;
     if (!match(r.Ubicacion, fc("fcUbicacion"))) return false;
     if (!match(r["Dias_ Caidos"], fc("fcDiasTotal"))) return false;
-    if (!match(r["Dias_ Caidos Mes (desde DESDE)"], fc("fcDiasMes"))) return false;
+
+    // ✅ filtro rápido días mes -> usa lo que se ve (mes seleccionado)
+    const mesFiltro = getMesFiltroActual();
+    const diasMesStr = mesFiltro ? String(getDiasMesView(r, mesFiltro) || "") : String(getDiasMesView(r, "") || "");
+    if (!match(diasMesStr, fc("fcDiasMes"))) return false;
+
     if (!match(r.Observacion, fc("fcObs"))) return false;
     if (!match(r.TipoAccidente, fc("fcANC"))) return false;
     if (!match(r.Nro_Siniestro, fc("fcSiniestro"))) return false;
@@ -1015,7 +1061,15 @@ function renderHistorico() {
   if (!tb) return;
   tb.innerHTML = "";
 
+  const mesFiltro = getMesFiltroActual(); // "YYYY-MM" o ""
+
   for (const r of filtered) {
+    // ✅ Días mes mostrado: si hay mes elegido, usa diasPorMes; si no, muestra legacy
+    const diasMes = mesFiltro
+      ? (getDiasMesView(r, mesFiltro) || "")
+      : (r["Dias_ Caidos Mes (desde DESDE)"] ?? "");
+
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="mono">${escapeHtml(r.id)}</td>
@@ -1027,7 +1081,10 @@ function renderHistorico() {
       <td class="mono">${escapeHtml(r.Desde || "")}</td>
       <td class="mono">${escapeHtml(r.Hasta || "")}</td>
       <td class="mono">${escapeHtml(r["Dias_ Caidos"] ?? "")}</td>
-      <td class="mono">${escapeHtml(r["Dias_ Caidos Mes (desde DESDE)"] ?? "")}</td>
+
+      <!-- ✅ ACÁ se refleja el cambio -->
+      <td class="mono">${escapeHtml(diasMes)}</td>
+
       <td>${escapeHtml(r.TipoAccidente || "")}</td>
       <td>${escapeHtml(r.Observacion || "")}</td>
       <td class="mono">${escapeHtml(r.Nro_Siniestro || "")}</td>
@@ -1040,21 +1097,35 @@ function renderHistorico() {
 
 function refrescarFiltros() {
   const registros = getRegistros();
-  const provincias = [...new Set(registros.map(r => (r.Provincia || "").trim()).filter(Boolean))].sort();
-  const areas = [...new Set(registros.map(r => (r.Area || "").trim()).filter(Boolean))].sort();
-  const obsList = [...new Set(registros.map(r => (r.Observacion || "").trim()).filter(Boolean))].sort();
-  const persList = [...new Set(registros.map(r => (r.Personal || "").trim()).filter(Boolean))].sort();
 
-  const meses = [...new Set(registros.map(r => monthKeyFromRecord(r)).filter(Boolean))].sort();
-  const diasTotal = [...new Set(registros.map(r => String(r["Dias_ Caidos"] || "")).filter(Boolean))].sort();
+  const provincias = [...new Set(registros.map(r => (r.Provincia || "").trim()).filter(Boolean))].sort();
+  const areas      = [...new Set(registros.map(r => (r.Area || "").trim()).filter(Boolean))].sort();
+  const obsList    = [...new Set(registros.map(r => (r.Observacion || "").trim()).filter(Boolean))].sort();
+  const persList   = [...new Set(registros.map(r => (r.Personal || "").trim()).filter(Boolean))].sort();
+
+  // ✅ Meses reales: keys de diasPorMes, con fallback al mes de Desde si aún no migraste
+  const meses = [...new Set(
+    registros.flatMap(r => {
+      const map = (r?.diasPorMes && typeof r.diasPorMes === "object") ? r.diasPorMes : null;
+      if (map) return Object.keys(map);
+      const mk = monthKeyFromRecord(r);
+      return mk ? [mk] : [];
+    }).filter(Boolean)
+  )].sort();
+
+  // ✅ A/NC correcto (TipoAccidente)
+  const ancList = [...new Set(
+    registros.map(r => String(r.TipoAccidente || "").trim()).filter(Boolean)
+  )].sort();
 
   fillSelect("fProvincia", provincias, "Todas");
   fillSelect("fArea", areas, "Todas");
   fillSelect("fObs", obsList, "Todas");
   fillSelect("fPersonal", persList, "Todos");
   fillSelect("fMes", meses, "Todos");
-  fillSelect("fANC", diasTotal, "Todos");
+  fillSelect("fANC", ancList, "Todos");
 }
+
 
 // refrescos por filtros
 document.getElementById("btnRefrescar")?.addEventListener("click", renderHistorico);
@@ -1305,15 +1376,48 @@ function exportToPDF(){
 // =======================
 // EXPORTES (Excel / PDF) con diasPorMes
 // =======================
+// =======================
+// HELPERS (diasPorMes) para Histórico
+// =======================
 function getMesFiltroActual() {
   return $("fMes")?.value || ""; // "YYYY-MM" o ""
 }
 
 function getDiasPorMesValue(r, mesKey) {
-  const map = r?.diasPorMes && typeof r.diasPorMes === "object" ? r.diasPorMes : {};
+  const map = (r?.diasPorMes && typeof r.diasPorMes === "object") ? r.diasPorMes : {};
   const n = Number(map?.[mesKey] ?? 0);
   return n > 0 ? n : 0;
 }
+
+// fallback: si el registro es viejo y NO tiene diasPorMes
+function getDiasMesFallback(r) {
+  const n = Number(r?.["Dias_ Caidos Mes (desde DESDE)"] ?? 0);
+  return n > 0 ? n : 0;
+}
+
+// Para mostrar / filtrar "Días Mes" en el histórico:
+// - Si hay mes seleccionado -> usa diasPorMes[mes]
+// - Si no hay mes seleccionado -> muestra legacy (mes desde DESDE)
+function getDiasMesView(r, mesFiltro) {
+  if (mesFiltro) {
+    const v = getDiasPorMesValue(r, mesFiltro);
+    // si el registro todavía no tiene diasPorMes, cae al viejo SOLO si coincide el mes de Desde
+    if (!r?.diasPorMes) {
+      const mk = monthKeyFromRecord(r);
+      return mk === mesFiltro ? getDiasMesFallback(r) : 0;
+    }
+    return v;
+  }
+  return getDiasMesFallback(r);
+}
+
+
+
+
+
+
+
+
 
 // arma filas según lo que estás viendo (filtros aplicados)
 function buildExportRowsFromHistorico() {
@@ -1435,7 +1539,7 @@ $("btnExportPDF")?.addEventListener("click", (e) => {
 
 // ✅ Bindings extra
 bindDiasAutoCalc();
-bindExportButtons();
+//bindExportButtons();
 // ✅ cálculo inicial
 syncDiasFields({ force: true });
 
