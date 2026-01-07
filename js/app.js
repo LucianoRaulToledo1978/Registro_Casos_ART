@@ -957,6 +957,108 @@ function bindDiasAutoCalc(){
 }
 
 
+// =====================
+// CERRAR TODOS LOS NC (Alta = hoy) EN FIREBASE (SIEMPRE)
+// =====================
+$("btnAltaHoyTodosNC")?.addEventListener("click", async () => {
+  try {
+    const hoy = new Date().toISOString().slice(0, 10);
+
+    // Tomamos todo lo que esté cargado en memoria
+    const all = getRegistros();
+    if (!all.length) {
+      setText("estadoHistorico", "⚠️ No hay registros cargados.");
+      return;
+    }
+
+    // ✅ TODOS los NC (siempre, aunque ya tengan Hasta)
+    const nc = all.filter(r => String(r.TipoAccidente || "").trim().toUpperCase() === "NC");
+
+    if (!nc.length) {
+      setText("estadoHistorico", "No hay registros NC para actualizar.");
+      return;
+    }
+
+    // Confirmación fuerte (porque pisa datos)
+    if (!confirm(
+      `Vas a actualizar ${nc.length} registro(s) NC.\n\n` +
+      `Esto va a SOBRESCRIBIR "Hasta" con ${hoy} en TODOS los NC (aunque ya tuvieran otra fecha).\n\n` +
+      `¿Continuar?`
+    )) return;
+
+    // (Opcional pero recomendado) pedir contraseña
+    if (typeof window.askDeletePassword === "function") {
+      const okPass = window.askDeletePassword(`ACTUALIZAR ${nc.length} registro(s) NC (Alta hoy)`);
+      if (!okPass) {
+        setText("estadoHistorico", "Contraseña incorrecta. No se actualizó nada.");
+        return;
+      }
+    }
+
+    setText("estadoHistorico", `Actualizando ${nc.length} NC...`);
+
+    let okCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < nc.length; i++) {
+      const r = nc[i];
+
+      try {
+        // Normalizar DESDE (puede venir con hora)
+        const desde = (r.Desde || "").includes("T") ? r.Desde.slice(0, 10) : (r.Desde || "");
+        if (!desde) throw new Error("Registro sin 'Desde'");
+
+        const hasta = hoy;
+
+        // ✅ Recalcular todo lo que mostrás / filtrás
+        const desdeDate = _parseYMD(desde);
+        const hastaDate = _parseYMD(hasta);
+
+        const diasTotal = _daysInclusive(desdeDate, hastaDate); // string o ""
+        const firstMesDesde = new Date(desdeDate.getFullYear(), desdeDate.getMonth(), 1);
+        const lastMesDesde  = new Date(desdeDate.getFullYear(), desdeDate.getMonth() + 1, 0);
+        const diasMesDesde  = _overlapDays(desdeDate, hastaDate, firstMesDesde, lastMesDesde); // legacy
+
+        const diasPorMes = calcDiasPorMes(desde, hasta);
+
+        // ✅ Patch a Firebase
+        const patch = {
+          Hasta: hasta,
+          "Dias_ Caidos": diasTotal,
+          "Dias_ Caidos Mes (desde DESDE)": diasMesDesde,
+          diasPorMes
+        };
+
+        await window.FB.updateRegistro(r.id, patch, CURRENT_USER_EMAIL);
+        okCount++;
+
+      } catch (e1) {
+        console.error("Error actualizando", r.id, e1);
+        failCount++;
+      }
+
+      // progreso
+      if ((i + 1) % 10 === 0 || i === nc.length - 1) {
+        setText("estadoHistorico", `Actualizando NC... ${i + 1}/${nc.length} | OK: ${okCount} | Error: ${failCount}`);
+      }
+    }
+
+    setText("estadoHistorico", `✅ Listo. NC actualizados: ${okCount} | Error: ${failCount}`);
+
+    // ✅ Recargar nube + refrescar histórico para ver reflejado
+    await loadRegistrosFromCloud();
+    refrescarFiltros();
+    renderHistorico();
+
+  } catch (e) {
+    console.error(e);
+    setText("estadoHistorico", "❌ Error en actualización masiva NC (mirá consola).");
+  }
+});
+
+
+
+
 /***********************
  * GUARDAR / ACTUALIZAR (Firestore)
  ***********************/
