@@ -665,8 +665,11 @@ function cargarRegistroEnFormulario(r) {
   if ($("hasta")) $("hasta").value = r.Hasta || "";
 
   if ($("diasTotal")) $("diasTotal").value = r["Dias_ Caidos"] || "";
-  if ($("diasMesActual")) $("diasMesActual").value = r["Dias_ Caidos Mes (desde DESDE)"] || "";
+  // 🔁 "Días mes en curso" se calcula SIEMPRE en base a Desde/Hasta y el mes actual (hoy).
+  //    No cargamos el valor guardado porque puede estar desactualizado.
   if ($("diasMesElegido")) $("diasMesElegido").value = r["Dias_ Caidos Mes elegido"] || "";
+
+  if (typeof syncDiasFields === "function") syncDiasFields({ force: true });
 
   if ($("anc")) $("anc").value = r.TipoAccidente || "A";
   if ($("gravedad")) $("gravedad").value = r.TipoDenuncia || "Leve";
@@ -748,7 +751,8 @@ function getFormData() {
     Hasta: getVal("hasta"),
 
     "Dias_ Caidos": getVal("diasTotal"),
-    "Dias_ Caidos Mes (desde DESDE)": getVal("diasMesActual"),
+    "Dias_ Caidos Mes (desde DESDE)": calcDiasMesDesde(getVal("desde"), getVal("hasta")),
+
     "Dias_ Caidos Mes elegido": getVal("diasMesElegido"),
 
     TipoAccidente: getVal("anc"),
@@ -955,6 +959,21 @@ function bindDiasAutoCalc(){
     el.addEventListener("input",  ()=>syncDiasFields({force:false}));
   });
 }
+
+// correccion para consolidado , calcula dias del mes del consolidado
+function calcDiasMesDesde(desdeStr, hastaStr) {
+  const desde = _parseYMD(desdeStr);
+  const hasta = _parseYMD(hastaStr);
+  if (!desde || !hasta) return "";
+
+  const first = new Date(desde.getFullYear(), desde.getMonth(), 1);
+  const last  = new Date(desde.getFullYear(), desde.getMonth() + 1, 0);
+
+  return _overlapDays(desde, hasta, first, last);
+}
+
+
+
 
 
 // =====================
