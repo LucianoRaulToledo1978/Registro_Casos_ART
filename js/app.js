@@ -542,10 +542,54 @@ $("btnBuscar")?.addEventListener("click", () => {
   setText("estadoBusqueda", "Encontrado ✅ (datos autocompletados)");
 });
 
-$("btnLimpiar")?.addEventListener("click", () => {
+function limpiarFormularioCompleto() {
+  // 1) salir de modo edición (si estabas editando)
+  if (typeof salirModoEdicion === "function") salirModoEdicion();
+
+  // 2) limpiar DNI + campos autocompletados por dotación
   if ($("dni")) $("dni").value = "";
   clearDotacionFields();
+
+  // 3) limpiar búsquedas auxiliares (buscar y cargar)
+  if ($("buscarRegDni")) $("buscarRegDni").value = "";
+  if ($("buscarRegSiniestro")) $("buscarRegSiniestro").value = "";
+
+  // 4) limpiar campos del caso
+  [
+    "fecha",
+    "desde",
+    "hasta",
+    "diasTotal",
+    "diasMesActual",
+    "mesCalculo",
+    "diasMesElegido",
+    "nroSiniestro",
+    "cie10",
+    "cie10Desc",
+    "observacion",
+    "descripcion",
+    "prestador",
+    "envioDenuncia",
+  ].forEach((id) => {
+    const el = $(id);
+    if (el) el.value = "";
+  });
+
+  // 5) volver selects a sus defaults (ajustá si querés otros valores)
+  if ($("anc")) $("anc").value = "A";
+  if ($("gravedad")) $("gravedad").value = "Leve";
+
+  // 6) limpiar mensajes de estado
   setText("estadoBusqueda", "");
+  setText("estadoGuardar", "");
+  setText("estadoEdicion", "");
+
+  // 7) recalcular/limpiar días (por si quedan números pegados)
+  if (typeof syncDiasFields === "function") syncDiasFields({ force: true });
+}
+
+$("btnLimpiar")?.addEventListener("click", () => {
+  limpiarFormularioCompleto();
 });
 
 
