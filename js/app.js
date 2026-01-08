@@ -272,32 +272,36 @@ async function clearDotacionCache() {
 // =====================
 // SOFIA-ART (Excel -> cache IndexedDB -> Map por Siniestro)
 // =====================
-const SOFIA_CACHE_KEY = "sofia_art_cache_v1";
+// =====================
+// SOFIA-ART (Excel -> IndexedDB -> Map por Siniestro)
+// =====================
+console.log("✅ SOFIA WINDOW PATCH ACTIVO");
+window.indexSofiaPorSiniestro = window.indexSofiaPorSiniestro || new Map();
 
+const SOFIA_CACHE_KEY = "sofia_art_cache_v1";
 
 function normalizarSiniestro(v) {
   return String(v ?? "").trim().replace(/\s+/g, "");
 }
 
-
 function buildIndexSofia(rows) {
-  indexSofiaPorSiniestro = new Map();
+  // ✅ limpiar sin reasignar (evita el error de const)
+  window.indexSofiaPorSiniestro.clear();
+
   if (!Array.isArray(rows) || !rows.length) return { rows: 0, indexed: 0 };
 
   for (const r of rows) {
     const sin = normalizarSiniestro(r?.["Siniestro"]);
     if (!sin) continue;
 
-    const cie10 = normalizarCie(r?.["CIE10"]); // reutiliza tu normalizarCie
+    const cie10 = normalizarCie(r?.["CIE10"]);
     const gravedad = String(r?.["Categoria s/CIE-10"] ?? "").trim();
 
-    // si hay repetidos, el último pisa al anterior (normalmente ok)
-    indexSofiaPorSiniestro.set(sin, { cie10, gravedad });
+    window.indexSofiaPorSiniestro.set(sin, { cie10, gravedad });
   }
 
-  return { rows: rows.length, indexed: indexSofiaPorSiniestro.size };
+  return { rows: rows.length, indexed: window.indexSofiaPorSiniestro.size };
 }
-
 
 async function saveSofiaCache(payload) {
   const db = await openDotDB();
@@ -318,6 +322,7 @@ async function loadSofiaCache() {
     req.onerror = () => reject(req.error);
   });
 }
+
 
 
 
@@ -560,13 +565,15 @@ $("btnActualizarSOFIA")?.addEventListener("click", async () => {
   if ($("infoSofia")) $("infoSofia").textContent = "";
 
   try {
-    const rows = await parseExcelToRows(f); // ya la tenés
+    const rows = await parseExcelToRows(f);
     if (!rows.length) {
       setText("estadoSofia", "El Excel está vacío.");
       return;
     }
 
+    // ✅ NO reasignar índice, solo construirlo
     const stats = buildIndexSofia(rows);
+
     await saveSofiaCache({ saved_at: new Date().toISOString(), rows });
 
     setText("estadoSofia", "SOFIA cargado ✅");
@@ -576,6 +583,7 @@ $("btnActualizarSOFIA")?.addEventListener("click", async () => {
     setText("estadoSofia", "❌ Error al leer SOFIA (mirá consola).");
   }
 });
+
 
 $("btnUsarSofiaCache")?.addEventListener("click", async () => {
   setText("estadoSofia", "Cargando SOFIA desde cache...");
@@ -625,23 +633,9 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) 
   const sin = normalizarSiniestro(siniestro);
   console.log("🟦 SOFIA | siniestro normalizado:", sin);
 
-  if (!sin) {
-    console.warn("🟨 SOFIA | siniestro vacío tras normalizar");
-    return;
-  }
+ if (!sin || !window.indexSofiaPorSiniestro?.size) return;
+const hit = window.indexSofiaPorSiniestro.get(sin);
 
-  if (!indexSofiaPorSiniestro?.size) {
-    console.warn("🟨 SOFIA | indexSofiaPorSiniestro VACÍO o no cargado");
-    return;
-  }
-
-  console.log("🟦 SOFIA | tamaño índice:", indexSofiaPorSiniestro.size);
-
-  const hit = indexSofiaPorSiniestro.get(sin);
-  if (!hit) {
-    console.warn("🟥 SOFIA | NO hay match para siniestro:", sin);
-    return;
-  }
 
   console.log("🟩 SOFIA | MATCH encontrado:", hit);
 
