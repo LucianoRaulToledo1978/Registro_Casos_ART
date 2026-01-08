@@ -615,18 +615,18 @@ function setSelectIfExists(selectId, value) {
   return false;
 }
 
-async function aplicarSofiaEnFormularioPorSiniestro(siniestro) {
+async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) {
   const sin = normalizarSiniestro(siniestro);
   if (!sin || !indexSofiaPorSiniestro?.size) return;
 
   const hit = indexSofiaPorSiniestro.get(sin);
   if (!hit) return;
 
-  let changed = false;
   const patch = {};
+  let changed = false;
 
   // CIE-10
-  if ($("cie10") && hit.cie10 && $("cie10").value !== hit.cie10) {
+  if (hit.cie10 && $("cie10") && $("cie10").value !== hit.cie10) {
     $("cie10").value = hit.cie10;
     $("cie10").dispatchEvent(new Event("input", { bubbles: true }));
     patch.CIE10 = hit.cie10;
@@ -634,29 +634,28 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro) {
   }
 
   // Gravedad
-  if ($("gravedad") && hit.gravedad && $("gravedad").value !== hit.gravedad) {
+  if (hit.gravedad && $("gravedad") && $("gravedad").value !== hit.gravedad) {
     $("gravedad").value = hit.gravedad;
     patch.TipoDenuncia = hit.gravedad;
     changed = true;
   }
 
-  // 🔥 GUARDADO AUTOMÁTICO
-  if (changed && editingId) {
-    try {
-      await window.FB.updateRegistro(editingId, patch, CURRENT_USER_EMAIL);
+  // ✅ GUARDADO CORRECTO
+  const id = recordId || editingId;
+  if (changed && id) {
+    await window.FB.updateRegistro(id, patch, CURRENT_USER_EMAIL);
 
-      // actualizar memoria local
-      const regs = getRegistros();
-      const idx = regs.findIndex(r => r.id === editingId);
-      if (idx >= 0) Object.assign(regs[idx], patch);
-      setRegistros(regs);
+    // actualizar memoria local → export funciona
+    const regs = getRegistros();
+    const idx = regs.findIndex(r => r.id === id);
+    if (idx >= 0) Object.assign(regs[idx], patch);
+    setRegistros(regs);
 
-      renderHistorico();
-    } catch (err) {
-      console.error("Error guardando datos SOFIA", err);
-    }
+    refrescarFiltros();
+    renderHistorico();
   }
 }
+
 
 
 
@@ -859,7 +858,7 @@ function cargarRegistroEnFormulario(r) {
 }
 
 // funcion para buscar y caragar desde el boton"buscar y cargar"//
-function buscarRegistroParaEdicion() {
+async function buscarRegistroParaEdicion() {
   const dniBuscado = normalizarDni(getVal("buscarRegDni"));
   const sinBuscado = String(getVal("buscarRegSiniestro") || "").trim();
 
@@ -882,9 +881,17 @@ function buscarRegistroParaEdicion() {
   }
 
   cargarRegistroEnFormulario(rec);
-  entrarModoEdicion(rec);
-  setText("estadoEdicion", `✏️ Editando ID: ${rec.id}`);
-  window.scrollTo({ top: 0, behavior: "smooth" });
+entrarModoEdicion(rec);
+
+// ✅ aplicar SOFIA y GUARDAR en Firebase + memoria
+await aplicarSofiaEnFormularioPorSiniestro(
+  rec.Nro_Siniestro || "",
+  rec.id
+);
+
+setText("estadoEdicion", `✏️ Editando ID: ${rec.id}`);
+window.scrollTo({ top: 0, behavior: "smooth" });
+
 }
 
 // ✅ Botón "Buscar y cargar"
