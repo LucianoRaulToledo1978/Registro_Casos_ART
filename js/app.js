@@ -1487,6 +1487,8 @@ function exportToExcel(){
       // ✅ Compatibilidad: lo que ya tenías fijo (mes de DESDE)
       "Días Mes (DESDE)": r["Dias_ Caidos Mes (desde DESDE)"] ?? "",
 
+      "Días Mes (EN CURSO)": calcDiasMesEnCurso(r.Desde || "", r.Hasta || ""),
+
       "A/NC": r.TipoAccidente  || "",
       "N° Siniestro": r.Nro_Siniestro || "",
       "CIE-10": r.CIE10 || "",
@@ -1632,6 +1634,7 @@ function buildExportRowsFromHistorico() {
       Hasta: r.Hasta ?? "",
       "Dias Caidos Total": r["Dias_ Caidos"] ?? "",
       ...(hasMes ? { [`Dias Caidos ${mesFiltro}`]: diasMes } : {}),
+      "Dias Mes (EN CURSO)": calcDiasMesEnCurso(r.Desde || "", r.Hasta || ""),
       TipoAccidente: r.TipoAccidente ?? "",
       Observacion: r.Observacion ?? "",
       Siniestro: r.Nro_Siniestro ?? ""
