@@ -265,7 +265,34 @@ async function clearDotacionCache() {
 // SOFIA-ART cache (IndexedDB) usando el mismo store DOT_STORE
 // =====================
 
+// =====================
+// SOFIA-ART (Excel -> cache IndexedDB -> Map por Siniestro)
+// =====================
+const SOFIA_CACHE_KEY = "sofia_art_cache_v1";
+let indexSofiaPorSiniestro = new Map(); // siniestro -> { cie10, gravedad }
 
+function normalizarSiniestro(v) {
+  return String(v ?? "").trim().replace(/\s+/g, "");
+}
+
+
+function buildIndexSofia(rows) {
+  indexSofiaPorSiniestro = new Map();
+  if (!Array.isArray(rows) || !rows.length) return { rows: 0, indexed: 0 };
+
+  for (const r of rows) {
+    const sin = normalizarSiniestro(r?.["Siniestro"]);
+    if (!sin) continue;
+
+    const cie10 = normalizarCie(r?.["CIE10"]); // reutiliza tu normalizarCie
+    const gravedad = String(r?.["Categoria s/CIE-10"] ?? "").trim();
+
+    // si hay repetidos, el último pisa al anterior (normalmente ok)
+    indexSofiaPorSiniestro.set(sin, { cie10, gravedad });
+  }
+
+  return { rows: rows.length, indexed: indexSofiaPorSiniestro.size };
+}
 
 
 async function saveSofiaCache(payload) {
@@ -390,34 +417,7 @@ function getCieDescripcion(code) {
 
 
 
-// =====================
-// SOFIA-ART (Excel -> cache IndexedDB -> Map por Siniestro)
-// =====================
-const SOFIA_CACHE_KEY = "sofia_art_cache_v1";
-let indexSofiaPorSiniestro = new Map(); // siniestro -> { cie10, gravedad }
 
-function normalizarSiniestro(v) {
-  return String(v ?? "").trim().replace(/\s+/g, "");
-}
-
-
-function buildIndexSofia(rows) {
-  indexSofiaPorSiniestro = new Map();
-  if (!Array.isArray(rows) || !rows.length) return { rows: 0, indexed: 0 };
-
-  for (const r of rows) {
-    const sin = normalizarSiniestro(r?.["Siniestro"]);
-    if (!sin) continue;
-
-    const cie10 = normalizarCie(r?.["CIE10"]); // reutiliza tu normalizarCie
-    const gravedad = String(r?.["Categoria s/CIE-10"] ?? "").trim();
-
-    // si hay repetidos, el último pisa al anterior (normalmente ok)
-    indexSofiaPorSiniestro.set(sin, { cie10, gravedad });
-  }
-
-  return { rows: rows.length, indexed: indexSofiaPorSiniestro.size };
-}
 
 
 
@@ -626,26 +626,43 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) 
   let changed = false;
 
   // CIE-10
-  if (hit.cie10 && $("cie10") && $("cie10").value !== hit.cie10) {
-    $("cie10").value = hit.cie10;
-    $("cie10").dispatchEvent(new Event("input", { bubbles: true }));
-    patch.CIE10 = hit.cie10;
-    changed = true;
+  if (hit.cie10 && $("cie10")) {
+    const nuevo = normalizarCie(hit.cie10);
+    const actual = normalizarCie($("cie10").value);
+
+    if (nuevo && actual !== nuevo) {
+      $("cie10").value = nuevo;
+      $("cie10").dispatchEvent(new Event("input", { bubbles: true }));
+
+      patch.CIE10 = nuevo;
+      patch.CIE10_Desc = getCieDescripcion(nuevo) || ""; // ✅ para export e histórico
+      changed = true;
+    }
   }
 
   // Gravedad
-  if (hit.gravedad && $("gravedad") && $("gravedad").value !== hit.gravedad) {
-    $("gravedad").value = hit.gravedad;
-    patch.TipoDenuncia = hit.gravedad;
-    changed = true;
+  if (hit.gravedad && $("gravedad")) {
+    const nuevo = String(hit.gravedad).trim();
+    const actual = String($("gravedad").value || "").trim();
+
+    if (nuevo && actual !== nuevo) {
+      $("gravedad").value = nuevo;
+      patch.TipoDenuncia = nuevo;
+      changed = true;
+    }
   }
+
+  // Si no cambió nada, no hacemos update
+  if (!changed) return;
 
   // ✅ GUARDADO CORRECTO
   const id = recordId || editingId;
-  if (changed && id) {
+  if (!id) return;
+
+  try {
     await window.FB.updateRegistro(id, patch, CURRENT_USER_EMAIL);
 
-    // actualizar memoria local → export funciona
+    // actualizar memoria local → export funciona sin recargar
     const regs = getRegistros();
     const idx = regs.findIndex(r => r.id === id);
     if (idx >= 0) Object.assign(regs[idx], patch);
@@ -653,8 +670,12 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) 
 
     refrescarFiltros();
     renderHistorico();
+  } catch (e) {
+    console.error("SOFIA: error guardando en Firebase", e);
+    // no tiramos error para no cortar la edición
   }
 }
+
 
 
 
@@ -665,27 +686,27 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) 
 // =====================
 // CARGA EXCEL CIE-10
 // =====================
-$("fileCIE10")?.addEventListener("change", async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+// $("fileCIE10")?.addEventListener("change", async (e) => {
+//   const file = e.target.files?.[0];
+//   if (!file) return;
 
-  try {
-    setText("estadoCie10", "⏳ Cargando CIE-10...");
+//   try {
+//     setText("estadoCie10", "⏳ Cargando CIE-10...");
 
-    const { count } = await loadCie10FromExcel(file);
+//     const { count } = await loadCie10FromExcel(file);
 
-    setText(
-      "estadoCie10",
-      `✅ CIE-10 cargado correctamente (${count} códigos)`
-    );
-  } catch (err) {
-    console.error(err);
-    alert("No se pudo cargar el archivo CIE-10.");
-    setText("estadoCie10", "❌ Error al cargar CIE-10");
-  } finally {
-    e.target.value = ""; // permite volver a subir el mismo archivo
-  }
-});
+//     setText(
+//       "estadoCie10",
+//       `✅ CIE-10 cargado correctamente (${count} códigos)`
+//     );
+//   } catch (err) {
+//     console.error(err);
+//     alert("No se pudo cargar el archivo CIE-10.");
+//     setText("estadoCie10", "❌ Error al cargar CIE-10");
+//   } finally {
+//     e.target.value = ""; // permite volver a subir el mismo archivo
+//   }
+// });
 
 
 
@@ -852,8 +873,7 @@ function cargarRegistroEnFormulario(r) {
   if ($("descripcion")) $("descripcion").value = r.Descripcion || "";
   if ($("prestador")) $("prestador").value = r.Prestador || "";
   if ($("envioDenuncia")) $("envioDenuncia").value = r["Envio Denuncia"] || "";
-  if (typeof aplicarSofiaEnFormularioPorSiniestro === "function") {
-    aplicarSofiaEnFormularioPorSiniestro(r.Nro_Siniestro || "");}
+  
 
 }
 
@@ -883,11 +903,15 @@ async function buscarRegistroParaEdicion() {
   cargarRegistroEnFormulario(rec);
 entrarModoEdicion(rec);
 
-// ✅ aplicar SOFIA y GUARDAR en Firebase + memoria
-await aplicarSofiaEnFormularioPorSiniestro(
-  rec.Nro_Siniestro || "",
-  rec.id
-);
+// ✅ aplicar SOFIA y GUARDAR en Firebase + memoria (si está disponible)
+  try {
+    if (typeof aplicarSofiaEnFormularioPorSiniestro === "function") {
+      await aplicarSofiaEnFormularioPorSiniestro(rec.Nro_Siniestro || "", rec.id);
+    }
+  } catch (e) {
+    console.error("SOFIA: no se pudo aplicar/guardar", e);
+    // no frenamos la edición por SOFIA
+  }
 
 setText("estadoEdicion", `✏️ Editando ID: ${rec.id}`);
 window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1523,12 +1547,29 @@ $("tbodyHistorico")?.addEventListener("click", async (e) => {
   const rec = registros.find(r => r.id === id);
   if (!rec) return;
 
-  if (action === "edit") {
-    cargarRegistroEnFormulario(rec);
-    entrarModoEdicion(rec);
-    setText("estadoGuardar", "Registro cargado para edición.");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+
+
+ if (action === "edit") {
+  cargarRegistroEnFormulario(rec);
+  entrarModoEdicion(rec);
+
+  // ✅ aplicar SOFIA y guardar (para que export tome el cambio)
+  try {
+    if (typeof aplicarSofiaEnFormularioPorSiniestro === "function") {
+      await aplicarSofiaEnFormularioPorSiniestro(rec.Nro_Siniestro || "", rec.id);
+    }
+  } catch (e1) {
+    console.error("SOFIA: no se pudo aplicar/guardar", e1);
+    // no frenamos la edición por SOFIA
   }
+
+  setText("estadoGuardar", "Registro cargado para edición.");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+
+
+
 
   if (action === "delete") {
 
