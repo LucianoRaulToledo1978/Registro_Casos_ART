@@ -261,6 +261,34 @@ async function clearDotacionCache() {
   });
 }
 
+// =====================
+// SOFIA-ART cache (IndexedDB) usando el mismo store DOT_STORE
+// =====================
+
+
+
+
+async function saveSofiaCache(payload) {
+  const db = await openDotDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DOT_STORE, "readwrite");
+    tx.objectStore(DOT_STORE).put({ key: SOFIA_CACHE_KEY, payload });
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadSofiaCache() {
+  const db = await openDotDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DOT_STORE, "readonly");
+    const req = tx.objectStore(DOT_STORE).get(SOFIA_CACHE_KEY);
+    req.onsuccess = () => resolve(req.result?.payload || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+
 
 // =====================
 // CIE-10 (Excel -> IndexedDB -> Map)
@@ -362,8 +390,34 @@ function getCieDescripcion(code) {
 
 
 
+// =====================
+// SOFIA-ART (Excel -> cache IndexedDB -> Map por Siniestro)
+// =====================
+const SOFIA_CACHE_KEY = "sofia_art_cache_v1";
+let indexSofiaPorSiniestro = new Map(); // siniestro -> { cie10, gravedad }
+
+function normalizarSiniestro(v) {
+  return String(v ?? "").trim().replace(/\s+/g, "");
+}
 
 
+function buildIndexSofia(rows) {
+  indexSofiaPorSiniestro = new Map();
+  if (!Array.isArray(rows) || !rows.length) return { rows: 0, indexed: 0 };
+
+  for (const r of rows) {
+    const sin = normalizarSiniestro(r?.["Siniestro"]);
+    if (!sin) continue;
+
+    const cie10 = normalizarCie(r?.["CIE10"]); // reutiliza tu normalizarCie
+    const gravedad = String(r?.["Categoria s/CIE-10"] ?? "").trim();
+
+    // si hay repetidos, el último pisa al anterior (normalmente ok)
+    indexSofiaPorSiniestro.set(sin, { cie10, gravedad });
+  }
+
+  return { rows: rows.length, indexed: indexSofiaPorSiniestro.size };
+}
 
 
 
@@ -484,6 +538,125 @@ $("cie10")?.addEventListener("input", () => {
   if ($("cie10Desc")) $("cie10Desc").value = desc;
 });
 
+
+let sofiaFileSeleccionado = null;
+
+$("fileSOFIA")?.addEventListener("change", (e) => {
+  sofiaFileSeleccionado = e.target.files?.[0] || null;
+  if (!sofiaFileSeleccionado) return setText("estadoSofia", "Sin cargar");
+  setText("estadoSofia", `Archivo listo: ${sofiaFileSeleccionado.name}. Tocá "Actualizar SOFIA-ART".`);
+  if ($("infoSofia")) $("infoSofia").textContent = "";
+});
+
+$("btnActualizarSOFIA")?.addEventListener("click", async () => {
+  const f = sofiaFileSeleccionado || $("fileSOFIA")?.files?.[0];
+  if (!f) return setText("estadoSofia", "⚠️ Seleccioná SOFIA-ART.xlsx primero.");
+
+  setText("estadoSofia", "Leyendo Excel SOFIA...");
+  if ($("infoSofia")) $("infoSofia").textContent = "";
+
+  try {
+    const rows = await parseExcelToRows(f); // ya la tenés
+    if (!rows.length) {
+      setText("estadoSofia", "El Excel está vacío.");
+      return;
+    }
+
+    const stats = buildIndexSofia(rows);
+    await saveSofiaCache({ saved_at: new Date().toISOString(), rows });
+
+    setText("estadoSofia", "SOFIA cargado ✅");
+    if ($("infoSofia")) $("infoSofia").textContent = `Filas: ${stats.rows} | Indexados (Siniestro): ${stats.indexed}`;
+  } catch (err) {
+    console.error(err);
+    setText("estadoSofia", "❌ Error al leer SOFIA (mirá consola).");
+  }
+});
+
+$("btnUsarSofiaCache")?.addEventListener("click", async () => {
+  setText("estadoSofia", "Cargando SOFIA desde cache...");
+  if ($("infoSofia")) $("infoSofia").textContent = "";
+
+  try {
+    const payload = await loadSofiaCache();
+    if (!payload?.rows?.length) {
+      setText("estadoSofia", "No hay cache SOFIA en este equipo.");
+      return;
+    }
+    const stats = buildIndexSofia(payload.rows);
+    setText("estadoSofia", "SOFIA cargado desde cache ✅");
+    if ($("infoSofia")) $("infoSofia").textContent = `Filas: ${stats.rows} | Indexados (Siniestro): ${stats.indexed} | Última carga: ${payload.saved_at}`;
+  } catch (err) {
+    console.error(err);
+    setText("estadoSofia", "❌ Error al leer cache SOFIA (mirá consola).");
+  }
+});
+
+function setSelectIfExists(selectId, value) {
+  const sel = $(selectId);
+  if (!sel) return false;
+  const v = String(value ?? "").trim();
+  if (!v) return false;
+
+  const exists = Array.from(sel.options).some(o => (o.value || "").trim() === v);
+  if (exists) {
+    sel.value = v;
+    return true;
+  }
+
+  // fallback: si no existe "Moderado" pero viene en SOFIA
+  const lower = v.toLowerCase();
+  if (lower.includes("moder")) {
+    const hasLeve = Array.from(sel.options).some(o => o.value === "Leve");
+    if (hasLeve) sel.value = "Leve";
+    return false;
+  }
+
+  return false;
+}
+
+async function aplicarSofiaEnFormularioPorSiniestro(siniestro) {
+  const sin = normalizarSiniestro(siniestro);
+  if (!sin || !indexSofiaPorSiniestro?.size) return;
+
+  const hit = indexSofiaPorSiniestro.get(sin);
+  if (!hit) return;
+
+  let changed = false;
+  const patch = {};
+
+  // CIE-10
+  if ($("cie10") && hit.cie10 && $("cie10").value !== hit.cie10) {
+    $("cie10").value = hit.cie10;
+    $("cie10").dispatchEvent(new Event("input", { bubbles: true }));
+    patch.CIE10 = hit.cie10;
+    changed = true;
+  }
+
+  // Gravedad
+  if ($("gravedad") && hit.gravedad && $("gravedad").value !== hit.gravedad) {
+    $("gravedad").value = hit.gravedad;
+    patch.TipoDenuncia = hit.gravedad;
+    changed = true;
+  }
+
+  // 🔥 GUARDADO AUTOMÁTICO
+  if (changed && editingId) {
+    try {
+      await window.FB.updateRegistro(editingId, patch, CURRENT_USER_EMAIL);
+
+      // actualizar memoria local
+      const regs = getRegistros();
+      const idx = regs.findIndex(r => r.id === editingId);
+      if (idx >= 0) Object.assign(regs[idx], patch);
+      setRegistros(regs);
+
+      renderHistorico();
+    } catch (err) {
+      console.error("Error guardando datos SOFIA", err);
+    }
+  }
+}
 
 
 
@@ -680,6 +853,9 @@ function cargarRegistroEnFormulario(r) {
   if ($("descripcion")) $("descripcion").value = r.Descripcion || "";
   if ($("prestador")) $("prestador").value = r.Prestador || "";
   if ($("envioDenuncia")) $("envioDenuncia").value = r["Envio Denuncia"] || "";
+  if (typeof aplicarSofiaEnFormularioPorSiniestro === "function") {
+    aplicarSofiaEnFormularioPorSiniestro(r.Nro_Siniestro || "");}
+
 }
 
 // funcion para buscar y caragar desde el boton"buscar y cargar"//
