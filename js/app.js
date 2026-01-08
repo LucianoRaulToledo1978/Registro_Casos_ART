@@ -1,4 +1,7 @@
 console.log("APP VERSION ✅ 2025-12-24 (dias+export fix)");
+console.log("✅ SOFIA WINDOW PATCH ACTIVO");
+
+
 /* ===============================
    AUTH (Firebase - Google)
    - Requiere firebase.js + config.js (FIREBASE_CONFIG, ALLOWED_EMAILS)
@@ -104,7 +107,8 @@ waitForFirebase();
 
 console.log("APP JS (Firebase)");
 
-
+window.indexSofiaPorSiniestro = window.indexSofiaPorSiniestro || new Map();
+const indexSofiaPorSiniestro = window.indexSofiaPorSiniestro;
 
 // const DELETE_PASSWORD = "1234";
 window.DELETE_PASSWORD = "1234";
@@ -269,7 +273,7 @@ async function clearDotacionCache() {
 // SOFIA-ART (Excel -> cache IndexedDB -> Map por Siniestro)
 // =====================
 const SOFIA_CACHE_KEY = "sofia_art_cache_v1";
-let indexSofiaPorSiniestro = new Map(); // siniestro -> { cie10, gravedad }
+
 
 function normalizarSiniestro(v) {
   return String(v ?? "").trim().replace(/\s+/g, "");
@@ -616,11 +620,30 @@ function setSelectIfExists(selectId, value) {
 }
 
 async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) {
+  console.log("🟦 SOFIA | siniestro recibido:", siniestro);
+
   const sin = normalizarSiniestro(siniestro);
-  if (!sin || !indexSofiaPorSiniestro?.size) return;
+  console.log("🟦 SOFIA | siniestro normalizado:", sin);
+
+  if (!sin) {
+    console.warn("🟨 SOFIA | siniestro vacío tras normalizar");
+    return;
+  }
+
+  if (!indexSofiaPorSiniestro?.size) {
+    console.warn("🟨 SOFIA | indexSofiaPorSiniestro VACÍO o no cargado");
+    return;
+  }
+
+  console.log("🟦 SOFIA | tamaño índice:", indexSofiaPorSiniestro.size);
 
   const hit = indexSofiaPorSiniestro.get(sin);
-  if (!hit) return;
+  if (!hit) {
+    console.warn("🟥 SOFIA | NO hay match para siniestro:", sin);
+    return;
+  }
+
+  console.log("🟩 SOFIA | MATCH encontrado:", hit);
 
   const patch = {};
   let changed = false;
@@ -630,12 +653,14 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) 
     const nuevo = normalizarCie(hit.cie10);
     const actual = normalizarCie($("cie10").value);
 
+    console.log("🟦 SOFIA | CIE10 actual:", actual, "nuevo:", nuevo);
+
     if (nuevo && actual !== nuevo) {
       $("cie10").value = nuevo;
       $("cie10").dispatchEvent(new Event("input", { bubbles: true }));
 
       patch.CIE10 = nuevo;
-      patch.CIE10_Desc = getCieDescripcion(nuevo) || ""; // ✅ para export e histórico
+      patch.CIE10_Desc = getCieDescripcion(nuevo) || "";
       changed = true;
     }
   }
@@ -645,6 +670,8 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) 
     const nuevo = String(hit.gravedad).trim();
     const actual = String($("gravedad").value || "").trim();
 
+    console.log("🟦 SOFIA | Gravedad actual:", actual, "nuevo:", nuevo);
+
     if (nuevo && actual !== nuevo) {
       $("gravedad").value = nuevo;
       patch.TipoDenuncia = nuevo;
@@ -652,30 +679,38 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) 
     }
   }
 
-  // Si no cambió nada, no hacemos update
-  if (!changed) return;
+  if (!changed) {
+    console.log("🟨 SOFIA | No hubo cambios para guardar");
+    return;
+  }
 
-  // ✅ GUARDADO CORRECTO
   const id = recordId || editingId;
-  if (!id) return;
+  if (!id) {
+    console.warn("🟥 SOFIA | No hay recordId / editingId para guardar");
+    return;
+  }
+
+  console.log("🟦 SOFIA | Guardando en Firebase ID:", id, patch);
 
   try {
     await window.FB.updateRegistro(id, patch, CURRENT_USER_EMAIL);
+    console.log("🟩 SOFIA | Guardado en Firebase OK");
 
-    // actualizar memoria local → export funciona sin recargar
     const regs = getRegistros();
     const idx = regs.findIndex(r => r.id === id);
-    if (idx >= 0) Object.assign(regs[idx], patch);
-    setRegistros(regs);
+    if (idx >= 0) {
+      Object.assign(regs[idx], patch);
+      console.log("🟩 SOFIA | Memoria local actualizada", regs[idx]);
+    }
 
+    setRegistros(regs);
     refrescarFiltros();
     renderHistorico();
+
   } catch (e) {
-    console.error("SOFIA: error guardando en Firebase", e);
-    // no tiramos error para no cortar la edición
+    console.error("🟥 SOFIA | Error guardando en Firebase", e);
   }
 }
-
 
 
 
