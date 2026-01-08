@@ -849,6 +849,23 @@ function _parseYMD(s){
   return null;
 }
 
+function calcDiasMesEnCurso(desdeStr, hastaStr) {
+  const desde = _parseYMD(desdeStr);
+  let hasta = _parseYMD(hastaStr);
+
+  if (!desde) return "";
+
+  // si no hay alta, tomamos hoy
+  if (!hasta) hasta = new Date();
+
+  const hoy = new Date();
+  const first = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const last  = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+
+  return _overlapDays(desde, hasta, first, last);
+}
+
+
 function _daysInclusive(a,b){
   if(!a||!b) return "";
   const A=new Date(a.getFullYear(),a.getMonth(),a.getDate());
@@ -1208,6 +1225,13 @@ function applyFilters(arr) {
     const diasMesStr = mesFiltro ? String(getDiasMesView(r, mesFiltro) || "") : String(getDiasMesView(r, "") || "");
     if (!match(diasMesStr, fc("fcDiasMes"))) return false;
 
+    // ✅✅✅ PUNTO C – DÍAS MES (EN CURSO)
+    const diasMesCursoStr = String(
+      calcDiasMesEnCurso(r.Desde || "", r.Hasta || "") || ""
+    );
+    if (!match(diasMesCursoStr, fc("fcDiasMesCurso"))) return false;
+
+
     if (!match(r.Observacion, fc("fcObs"))) return false;
     if (!match(r.TipoAccidente, fc("fcANC"))) return false;
     if (!match(r.Nro_Siniestro, fc("fcSiniestro"))) return false;
@@ -1234,6 +1258,8 @@ function renderHistorico() {
       ? (getDiasMesView(r, mesFiltro) || "")
       : (r["Dias_ Caidos Mes (desde DESDE)"] ?? "");
 
+    // ✅ NUEVO: días del mes EN CURSO (mes actual)
+    const diasMesCurso = calcDiasMesEnCurso(r.Desde || "", r.Hasta || "");
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -1247,8 +1273,8 @@ function renderHistorico() {
       <td class="mono">${escapeHtml(r.Hasta || "")}</td>
       <td class="mono">${escapeHtml(r["Dias_ Caidos"] ?? "")}</td>
 
-      <!-- ✅ ACÁ se refleja el cambio -->
       <td class="mono">${escapeHtml(diasMes)}</td>
+      <td class="mono">${escapeHtml(diasMesCurso)}</td>
 
       <td>${escapeHtml(r.TipoAccidente || "")}</td>
       <td>${escapeHtml(r.Observacion || "")}</td>
@@ -1297,7 +1323,7 @@ document.getElementById("btnRefrescar")?.addEventListener("click", renderHistori
 ["fProvincia","fArea","fMes","fANC","fObs","fPersonal"].forEach(id => $(id)?.addEventListener("change", renderHistorico));
 [
   "fcFecha","fcDni","fcNombre","fcProvincia","fcArea","fcUbicacion",
-  "fcDesde","fcHasta","fcDiasTotal","fcDiasMes","fcANC","fcObs","fcSiniestro"
+  "fcDesde","fcHasta","fcDiasTotal","fcDiasMes","fcDiasMesCurso","fcANC","fcObs","fcSiniestro"
 ].forEach(id => $(id)?.addEventListener("input", renderHistorico));
 
 /***********************
