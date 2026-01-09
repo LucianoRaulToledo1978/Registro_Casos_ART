@@ -284,6 +284,15 @@ function normalizarSiniestro(v) {
   return String(v ?? "").trim().replace(/\s+/g, "");
 }
 
+// funcion para dar vuelta la fecha que sale en el reporte
+function formatFechaDMY(fechaStr) {
+  if (!fechaStr) return "";
+  const [y, m, d] = fechaStr.split("-");
+  if (!y || !m || !d) return fechaStr;
+  return `${Number(d)}-${Number(m)}-${y}`;
+}
+
+
 function buildIndexSofia(rows) {
   // ✅ limpiar sin reasignar (evita el error de const)
   window.indexSofiaPorSiniestro.clear();
@@ -1830,7 +1839,7 @@ function exportToExcel(){
 
     const data = rows.map(r => ({
       "ID": r.id || "",
-      "Fecha": r.Fecha || "",
+      "Fecha": formatFechaDMY(r.Fecha || ""),
       "DNI": r.DNI || "",
       "Cuil": r.CUIL || "",
       "Legajo": r.Legajo || "",
@@ -1840,8 +1849,8 @@ function exportToExcel(){
       "Provincia": r.Provincia || "",
       "Área": r.Area || "",
       "Personal": r.Personal || "",
-      "Desde": r.Desde || "",
-      "Hasta": r.Hasta || "",
+      "Desde": formatFechaDMY(r.Desde || ""),
+      "Hasta": formatFechaDMY(r.Hasta || ""),
 
       "Días Total": r["Dias_ Caidos"] ?? "",
 
@@ -1978,6 +1987,8 @@ function getDiasMesView(r, mesFiltro) {
 
 // arma filas según lo que estás viendo (filtros aplicados)
 function buildExportRowsFromHistorico() {
+
+
   const all = getRegistros();
   const filtered = applyFilters(all);
 
@@ -1994,8 +2005,9 @@ function buildExportRowsFromHistorico() {
       Provincia: r.Provincia ?? "",
       Area: r.Area ?? "",
       Ubicacion: r.Ubicacion ?? "",
-      Desde: r.Desde ?? "",
-      Hasta: r.Hasta ?? "",
+      Desde: formatFechaDMY(r.Desde ?? ""),
+      Hasta: formatFechaDMY(r.Hasta ?? ""),
+
       "Dias Caidos Total": r["Dias_ Caidos"] ?? "",
       ...(hasMes ? { [`Dias Caidos ${mesFiltro}`]: diasMes } : {}),
       "Dias Mes (EN CURSO)": calcDiasMesEnCurso(r.Desde || "", r.Hasta || ""),
