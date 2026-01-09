@@ -1057,6 +1057,117 @@ $("btnMigrarDiasPorMes")?.addEventListener("click", () => {
   migrarDiasPorMesHistorico();
 });
 
+// migrar sofia-art
+
+$("btnMigrarSofiaHistorico")?.addEventListener("click", async () => {
+  try {
+    // ✅ Validación: SOFIA cargado
+    if (!window.indexSofiaPorSiniestro || window.indexSofiaPorSiniestro.size === 0) {
+      alert("Primero cargá SOFIA-ART (o usá cache SOFIA).");
+      return;
+    }
+
+    const all = getRegistros();
+    if (!all.length) {
+      alert("No hay registros en el histórico.");
+      return;
+    }
+
+    // ✅ Solo candidatos con siniestro
+    const candidatos = all.filter(r => normalizarSiniestro(r.Nro_Siniestro || ""));
+    if (!candidatos.length) {
+      alert("No hay registros con N° de siniestro.");
+      return;
+    }
+
+    if (!confirm(
+      `Esto completará SOLO CAMPOS VACÍOS (no pisa datos).\n\n` +
+      `Registros con siniestro: ${candidatos.length}\n` +
+      `¿Continuar?`
+    )) return;
+
+    setText("estadoHistorico", "Migrando SOFIA al histórico (solo vacíos)...");
+
+    let revisados = 0;
+    let actualizados = 0;
+    let sinMatch = 0;
+    let sinCambios = 0;
+    let errores = 0;
+
+    for (let i = 0; i < candidatos.length; i++) {
+      const r = candidatos[i];
+      revisados++;
+
+      const sin = normalizarSiniestro(r.Nro_Siniestro || "");
+      const hit = window.indexSofiaPorSiniestro.get(sin);
+
+      if (!hit) {
+        sinMatch++;
+        continue;
+      }
+
+      // ✅ Política "no pisa": solo completar si está vacío
+      const cieActual = String(r.CIE10 || "").trim();
+      const gravActual = String(r.TipoDenuncia || "").trim();
+
+      const cieNuevo = normalizarCie(hit.cie10 || "");
+      const gravNuevo = String(hit.gravedad || "").trim();
+
+      const patch = {};
+
+      // Completa CIE10 solo si está vacío
+      if (!cieActual && cieNuevo) {
+        patch.CIE10 = cieNuevo;
+        patch.CIE10_Desc = getCieDescripcion(cieNuevo) || "";
+      }
+
+      // Completa Gravedad solo si está vacío
+      if (!gravActual && gravNuevo) {
+        patch.TipoDenuncia = gravNuevo;
+      }
+
+      if (!Object.keys(patch).length) {
+        sinCambios++;
+        continue;
+      }
+
+      try {
+        await window.FB.updateRegistro(r.id, patch, CURRENT_USER_EMAIL);
+
+        // ✅ actualiza memoria local (para que histórico/export reflejen ya)
+        Object.assign(r, patch);
+        actualizados++;
+      } catch (e) {
+        console.error("Error migrando SOFIA en", r.id, e);
+        errores++;
+      }
+
+      // Progreso cada 25
+      if ((i + 1) % 25 === 0) {
+        setText(
+          "estadoHistorico",
+          `Migrando SOFIA... ${i + 1}/${candidatos.length} | OK:${actualizados} | sinMatch:${sinMatch} | sinCambios:${sinCambios} | err:${errores}`
+        );
+      }
+    }
+
+    // asegurar cache actualizado
+    setRegistros(all);
+    refrescarFiltros();
+    renderHistorico();
+
+    setText(
+      "estadoHistorico",
+      `✅ Migración SOFIA lista | Revisados:${revisados} | Actualizados:${actualizados} | Sin match:${sinMatch} | Sin cambios:${sinCambios} | Errores:${errores}`
+    );
+
+  } catch (e) {
+    console.error(e);
+    setText("estadoHistorico", "❌ Error en migración SOFIA (mirá consola).");
+  }
+});
+
+
 
 /***********************
  * CÁLCULO DÍAS CAÍDOS
