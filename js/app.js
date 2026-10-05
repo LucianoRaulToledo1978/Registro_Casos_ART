@@ -799,6 +799,7 @@ function limpiarFormularioCompleto() {
     "cie10",
     "cie10Desc",
     "observacion",
+    "denunciaIngresadaPor",
     "descripcion",
     "prestador",
     "envioDenuncia",
@@ -909,6 +910,7 @@ function cargarRegistroEnFormulario(r) {
   if ($("nroSiniestro")) $("nroSiniestro").value = r.Nro_Siniestro || "";
   if ($("cie10")) $("cie10").value = r.CIE10 || "";
   if ($("observacion")) $("observacion").value = r.Observacion || "";
+  if ($("denunciaIngresadaPor")) $("denunciaIngresadaPor").value = r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "";
   if ($("descripcion")) $("descripcion").value = r.Descripcion || "";
   if ($("prestador")) $("prestador").value = r.Prestador || "";
   if ($("envioDenuncia")) $("envioDenuncia").value = r["Envio Denuncia"] || "";
@@ -1008,6 +1010,7 @@ function getFormData() {
     CIE10: getVal("cie10"),
     CIE10_Desc: getCieDescripcion(getVal("cie10")),
     Observacion: getVal("observacion"),
+    DenunciaIngresadaPor: getVal("denunciaIngresadaPor"),
     Descripcion: getVal("descripcion"),
     Prestador: getVal("prestador"),
     "Envio Denuncia": getVal("envioDenuncia"),
@@ -1870,6 +1873,7 @@ function exportToExcel(){
       "Gravedad": r.TipoDenuncia || "",
 
       "Obs": r.Observacion || "",
+      "Denuncia ingresada por": r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "",
       "Descripción del hecho":
         r["Descripción_del_hecho"] ??
         r.Descripcion_del_hecho ??
@@ -2014,6 +2018,7 @@ function buildExportRowsFromHistorico() {
       "Dias Mes (EN CURSO)": calcDiasMesEnCurso(r.Desde || "", r.Hasta || ""),
       TipoAccidente: r.TipoAccidente ?? "",
       Observacion: r.Observacion ?? "",
+      "Denuncia ingresada por": r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "",
       Siniestro: r.Nro_Siniestro ?? ""
     };
   });
@@ -2194,3 +2199,23 @@ function instalarImportadorSiml() {
 }
 instalarImportadorSiml();
 
+// Campo editable integrado al formulario existente, sin modificar index.html.
+function instalarCampoDenunciante() {
+  const observation = document.getElementById('observacion');
+  if (!observation || document.getElementById('denunciaIngresadaPor')) return;
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'width:100%;margin-top:12px;margin-bottom:12px';
+  const label = document.createElement('label');
+  label.htmlFor = 'denunciaIngresadaPor';
+  label.textContent = 'Denuncia ingresada por:';
+  label.style.cssText = 'display:block;margin-bottom:6px';
+  const input = document.createElement('input');
+  input.type = 'text';input.id = 'denunciaIngresadaPor';input.name = 'denunciaIngresadaPor';
+  input.placeholder = 'Autodenunciado, Paola u otro nombre';
+  input.className = observation.className;
+  input.style.cssText = 'width:100%;box-sizing:border-box';
+  wrapper.append(label,input);
+  observation.after(wrapper);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', instalarCampoDenunciante);
+else instalarCampoDenunciante();

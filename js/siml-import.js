@@ -83,17 +83,15 @@ export function buildPlan(rows, existing, dotacion, today) {
     // Permite completar observaciones de correos importados con versiones anteriores.
     const accident = latest('tipo_accidente');
     const reporter = latest('denuncia_ingresada_por');
-    let observation = text(old?.Observacion);
-    for (const detail of [accident ? `Tipo de accidente: ${accident}` : '',
-                          reporter ? `Denuncia ingresada por: ${reporter}` : '']) {
-      if (detail && !observation.toLocaleLowerCase().includes(detail.toLocaleLowerCase()))
-        observation = observation ? observation + ' | ' + detail : detail;
-    }
+    const observation = accident || text(old?.Observacion);
     const enriched = observation !== text(old?.Observacion) ||
-      (reporter && reporter !== text(old?.SIML_DenunciaIngresadaPor));
+      (reporter && (!text(old?.DenunciaIngresadaPor) || reporter !== text(old?.SIML_DenunciaIngresadaPor)));
     if(old && ids.every(id=>processed.has(id)) && !enriched) continue;
     patch.Observacion = observation;
-    if (reporter) patch.SIML_DenunciaIngresadaPor = reporter;
+    if (reporter) {
+      patch.SIML_DenunciaIngresadaPor = reporter;
+      if (!text(old?.DenunciaIngresadaPor)) patch.DenunciaIngresadaPor = reporter;
+    }
     const calculation = days(start,end||today);
     patch['Dias_ Caidos'] = String(calculation.total);
     patch['Dias_ Caidos Mes (desde DESDE)'] = String(calculation.months[start.slice(0,7)]||0);
