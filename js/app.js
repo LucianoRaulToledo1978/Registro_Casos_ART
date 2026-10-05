@@ -799,6 +799,7 @@ function limpiarFormularioCompleto() {
     "cie10",
     "cie10Desc",
     "observacion",
+    "rechazado",
     "denunciaIngresadaPor",
     "descripcion",
     "prestador",
@@ -910,6 +911,7 @@ function cargarRegistroEnFormulario(r) {
   if ($("nroSiniestro")) $("nroSiniestro").value = r.Nro_Siniestro || "";
   if ($("cie10")) $("cie10").value = r.CIE10 || "";
   if ($("observacion")) $("observacion").value = r.Observacion || "";
+  if ($("rechazado")) $("rechazado").value = valorRechazado(r);
   if ($("denunciaIngresadaPor")) $("denunciaIngresadaPor").value = r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "";
   if ($("descripcion")) $("descripcion").value = r.Descripcion || "";
   if ($("prestador")) $("prestador").value = r.Prestador || "";
@@ -1010,6 +1012,7 @@ function getFormData() {
     CIE10: getVal("cie10"),
     CIE10_Desc: getCieDescripcion(getVal("cie10")),
     Observacion: getVal("observacion"),
+    Rechazado: getVal("rechazado") || "NO",
     DenunciaIngresadaPor: getVal("denunciaIngresadaPor"),
     Descripcion: getVal("descripcion"),
     Prestador: getVal("prestador"),
@@ -1873,6 +1876,7 @@ function exportToExcel(){
       "Gravedad": r.TipoDenuncia || "",
 
       "Obs": r.Observacion || "",
+      "Rechazado": valorRechazado(r),
       "Denuncia ingresada por": r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "",
       "Descripción del hecho":
         r["Descripción_del_hecho"] ??
@@ -1923,6 +1927,8 @@ function exportToPDF(){
       r["Dias_ Caidos"] ?? "",
       r["Dias_ Caidos Mes (desde DESDE)"] ?? "",
       r.Observacion || "",
+      valorRechazado(r),
+      r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "",
       r.Nro_Siniestro || ""
     ]);
 
@@ -1930,7 +1936,7 @@ function exportToPDF(){
       startY: 45,
       head: [[
         "Fecha","DNI","Nombre","Provincia","Área","Ubicación","Desde","Hasta",
-        "Días Total","Días Mes (DESDE)","Obs","N° Siniestro"
+        "Días Total","Días Mes (DESDE)","Observación","Rechazado","Denuncia ingresada por","N° Siniestro"
       ]],
       body,
       styles: { fontSize: 8, cellPadding: 3 },
@@ -2018,6 +2024,7 @@ function buildExportRowsFromHistorico() {
       "Dias Mes (EN CURSO)": calcDiasMesEnCurso(r.Desde || "", r.Hasta || ""),
       TipoAccidente: r.TipoAccidente ?? "",
       Observacion: r.Observacion ?? "",
+      "Rechazado": valorRechazado(r),
       "Denuncia ingresada por": r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "",
       Siniestro: r.Nro_Siniestro ?? ""
     };
@@ -2214,8 +2221,24 @@ function instalarCampoDenunciante() {
   input.placeholder = 'Autodenunciado, Paola u otro nombre';
   input.className = observation.className;
   input.style.cssText = 'width:100%;box-sizing:border-box';
-  wrapper.append(label,input);
+  const rejectionLabel = document.createElement('label');
+  rejectionLabel.htmlFor = 'rechazado';rejectionLabel.textContent = 'Rechazado:';
+  rejectionLabel.style.cssText = 'display:block;margin-bottom:6px';
+  const rejection = document.createElement('select');
+  rejection.id = 'rechazado';rejection.name = 'rechazado';
+  rejection.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:12px';
+  for (const [value, title] of [['NO','No'],['SI','Sí']]) {
+    const option = document.createElement('option');option.value = value;option.textContent = title;rejection.append(option);
+  }
+  wrapper.append(rejectionLabel,rejection,label,input);
   observation.after(wrapper);
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', instalarCampoDenunciante);
 else instalarCampoDenunciante();
+
+function valorRechazado(r) {
+  const value = String(r.Rechazado ?? '').trim().toUpperCase();
+  if (value === 'SI' || value === 'SÍ' || r.Rechazado === true) return 'SI';
+  if (value === 'NO' || r.Rechazado === false) return 'NO';
+  return r.SIML_UltimoTipo === 'RECHAZO' ? 'SI' : 'NO';
+}

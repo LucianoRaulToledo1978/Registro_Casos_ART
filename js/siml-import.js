@@ -41,12 +41,13 @@ export function buildPlan(rows, existing, dotacion, today) {
     const matches = existing.filter(r=>sin(r.Nro_Siniestro)===number);
     if(matches.length>1) {reject('Hay varios registros existentes para este número; resolver duplicados.');continue;}
     const old = matches[0] || null;
-    if(mails.some(r=>r.tipo==='RECHAZO')) {reject('El Excel no contiene fecha efectiva de rechazo: requiere revisión manual.');continue;}
     const dnis = new Set(mails.map(r=>dni(r.dni)).filter(Boolean));
     if(dnis.size>1 || (old && dnis.size && dni(old.DNI) && !dnis.has(dni(old.DNI)))) {
       reject('DNI contradictorios entre correos o con el registro existente.');continue;
     }
-    const sorted = mails.slice().sort((a,b)=>text(a.fecha_correo).localeCompare(text(b.fecha_correo)) || a._row-b._row);
+    const known = new Map((old?.SIML_Movimientos || []).map(r=>[text(r.id_correo),r]));
+    for (const mail of mails) known.set(text(mail.id_correo),mail);
+    const sorted = [...known.values()].sort((a,b)=>text(a.fecha_correo).localeCompare(text(b.fecha_correo)) || (a._row||0)-(b._row||0));
     const origins = sorted.filter(r=>r.tipo==='DENUNCIA'||r.tipo==='REINGRESO');
     const latest = field => [...sorted].reverse().map(r=>text(r[field])).find(Boolean)||'';
     const originDates = new Set(origins.map(r=>ymd(r.tipo==='REINGRESO'?r.fecha_movimiento:r.fecha_accidente)));
@@ -54,18 +55,21 @@ export function buildPlan(rows, existing, dotacion, today) {
     const start = old ? ymd(old.Desde) : ([...originDates][0]||'');
     if(!start) {reject('Falta caso previo o denuncia con fecha de inicio.');continue;}
     if(old && originDates.size && !originDates.has(start)) {reject('La fecha Desde manual difiere del correo.');continue;}
+    const lastType = text(sorted[sorted.length-1]?.tipo);
+    const isRejected = lastType === 'RECHAZO';
+    const closed = lastType === 'ALTA' || isRejected;
     const altas = sorted.filter(r=>r.tipo==='ALTA');
     let end = old ? ymd(old.Hasta) : '';
-    if(altas.length) {
+    if(lastType === 'ALTA') {
       const lastMailDate = text(altas[altas.length-1].fecha_correo);
       const ends = new Set(altas.filter(r=>text(r.fecha_correo)===lastMailDate).map(r=>ymd(r.fecha_desde)));
       if(ends.size!==1 || ends.has('')) {reject('Fecha de alta faltante o varias fechas para la última notificación.');continue;}
       end = [...ends][0];
       if(origins.some(r=>r.fecha_correo>lastMailDate)) {reject('Hay una reapertura posterior al alta: revisar secuencia.');continue;}
     }
+    if (!closed && lastType === 'REINGRESO') end = '';
     if(end && end<start) {reject('El alta es anterior al inicio de la baja.');continue;}
     if(start>today || (end && end>today)) {reject('Fecha futura: revisar antes de importar.');continue;}
-    if(old && /rechaz/i.test(text(old.Observacion))) {reject('Caso marcado como rechazado: revisar su reapertura manualmente.');continue;}
     const workerDni = [...dnis][0] || dni(old?.DNI);
     if(!workerDni || !latest('trabajador') && !text(old?.Nombre)) {reject('Faltan DNI o nombre.');continue;}
     const worker = dotacion.get(workerDni) || {};
@@ -77,14 +81,21 @@ export function buildPlan(rows, existing, dotacion, today) {
     for(const [k,v] of Object.entries(fields)) if(v && !text(old?.[k])) patch[k]=v;
     if(!old) Object.assign(patch,{Nro_Siniestro:number,Fecha:latest('fecha_correo'),Desde:start,Hasta:end,
       TipoAccidente:end?'A':'NC',TipoDenuncia:'',CIE10:'',CIE10_Desc:'',Observacion:'', 'Envio Denuncia':''});
-    if(altas.length) Object.assign(patch,{Hasta:end,TipoAccidente:'A'});
+    if(lastType === 'ALTA') patch.Hasta = end;
+    const desiredState = closed ? 'A' : 'NC';
+    patch.TipoAccidente = desiredState;
+    patch.Rechazado = isRejected ? 'SI' : 'NO';
+    if (lastType === 'REINGRESO') patch.Hasta = ''; 
     const ids = [...new Set(mails.map(r=>text(r.id_correo)))];
     const processed = new Set(old?.SIML_IdCorreos || []);
     // Permite completar observaciones de correos importados con versiones anteriores.
     const accident = latest('tipo_accidente');
     const reporter = latest('denuncia_ingresada_por');
     const observation = accident || text(old?.Observacion);
-    const enriched = observation !== text(old?.Observacion) ||
+    const stateChanged = patch.Rechazado !== text(old?.Rechazado) || desiredState !== text(old?.TipoAccidente) ||
+      (lastType === 'ALTA' && end !== ymd(old?.Hasta)) ||
+      (isRejected && old?.SIML_RechazoSinFecha !== true);
+    const enriched = stateChanged || observation !== text(old?.Observacion) ||
       (reporter && (!text(old?.DenunciaIngresadaPor) || reporter !== text(old?.SIML_DenunciaIngresadaPor)));
     if(old && ids.every(id=>processed.has(id)) && !enriched) continue;
     patch.Observacion = observation;
@@ -92,10 +103,18 @@ export function buildPlan(rows, existing, dotacion, today) {
       patch.SIML_DenunciaIngresadaPor = reporter;
       if (!text(old?.DenunciaIngresadaPor)) patch.DenunciaIngresadaPor = reporter;
     }
-    const calculation = days(start,end||today);
+    const calculation = isRejected && !end ? null : days(start,end||today);
+    if (isRejected) patch.SIML_RechazoSinFecha = true;
+    else patch.SIML_RechazoSinFecha = false;
+    if (calculation) {
     patch['Dias_ Caidos'] = String(calculation.total);
     patch['Dias_ Caidos Mes (desde DESDE)'] = String(calculation.months[start.slice(0,7)]||0);
     patch.diasPorMes = calculation.months;
+    } else if (!old) {
+      patch['Dias_ Caidos'] = '';
+      patch['Dias_ Caidos Mes (desde DESDE)'] = '';
+      patch.diasPorMes = {};
+    }
     patch.SIML_IdCorreos = [...new Set([...processed,...ids])];
     const history = new Map((old?.SIML_Movimientos || []).map(r=>[r.id_correo,r]));
     for(const mail of mails) {
@@ -104,13 +123,13 @@ export function buildPlan(rows, existing, dotacion, today) {
     }
     patch.SIML_Movimientos = [...history.values()];
     patch.SIML_SiniestroBase = number.slice(0,-3);
-    patch.SIML_UltimoTipo = altas.length?'ALTA':text(origins[origins.length-1]?.tipo);
+    patch.SIML_UltimoTipo = lastType;
     patch.SIML_TipoAccidente = latest('tipo_accidente');
     const id = old?.id || 'siml_'+number.replace(/\//g,'_');
     const expected = old ? Object.fromEntries(Object.entries(old).filter(([k])=>k!=='id')) : null;
     actions.push({id,expected,patch,siniestro:number,status:old?'ACTUALIZAR':'CREAR',
       rows:mails.length,Desde:start,Hasta:end,Nombre:fields.Nombre||old?.Nombre||'',
-      reason:dotacion.has(workerDni)?'':'Sin dotación: revisar área, provincia y legajo.'});
+      reason:[dotacion.has(workerDni)?'':'Sin dotación: revisar área, provincia y legajo.', isRejected?'Rechazo: A/NC = A. Falta fecha efectiva; revisar Hasta y días manualmente.':''].filter(Boolean).join(' ')});
   }
   return {actions,pending,inputRows:rows.length};
 }
