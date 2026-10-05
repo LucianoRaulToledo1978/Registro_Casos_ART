@@ -9,6 +9,7 @@ console.log("✅ SOFIA WINDOW PATCH ACTIVO");
 
 
 import { auth, db } from "./firebase.js";
+import { buildPlan as buildSimlPlan } from "./siml-import.js";
 
 
 let CURRENT_USER_EMAIL = null;
@@ -2112,4 +2113,84 @@ bindDiasAutoCalc();
 //bindExportButtons();
 // ✅ cálculo inicial
 syncDiasFields({ force: true });
+
+// Importador Excel SIML. Se agrega sin modificar el HTML existente.
+function instalarImportadorSiml() {
+  if (document.getElementById('simlImportPanel')) return;
+  const panel = document.createElement('section');
+  panel.id = 'simlImportPanel';
+  panel.style.cssText = 'margin:16px;padding:16px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#17212b;';
+  const title = document.createElement('h3'); title.textContent = 'Importar correos ART desde SIML';
+  const note = document.createElement('p'); note.textContent = 'Elegí el Excel exportado por SIML. Revisá los casos antes de guardarlos en Firebase. Cada reingreso conserva su período.';
+  const file = document.createElement('input'); file.type='file';file.accept='.xlsx';
+  const analyze = document.createElement('button');analyze.type='button';analyze.textContent='Analizar Excel SIML';
+  const save = document.createElement('button');save.type='button';save.textContent='Guardar seleccionados en Firebase';save.disabled=true;
+  const status = document.createElement('p');status.setAttribute('role','status');
+  const preview = document.createElement('div');preview.style.cssText='overflow:auto;max-height:420px';
+  panel.append(title,note,file,analyze,save,status,preview);
+  document.body.append(panel);
+  let plan = null, checks = [], busy=false;
+  file.addEventListener('change',()=>{plan=null;save.disabled=true;preview.replaceChildren();});
+  const showTable = () => {
+    preview.replaceChildren();checks=[];
+    const table=document.createElement('table');table.style.cssText='width:100%;border-collapse:collapse;font-size:14px';
+    const head=document.createElement('tr');
+    ['Guardar','Acción','Siniestro','Trabajador','Desde','Hasta','Correos','Revisión'].forEach(label=>{
+      const th=document.createElement('th');th.textContent=label;th.style.cssText='padding:8px;border-bottom:1px solid #aaa;text-align:left';head.append(th);
+    });table.append(head);
+    [...plan.actions,...plan.pending].forEach(action=>{
+      const row=document.createElement('tr'), cell=document.createElement('td');
+      if(action.patch) {
+        const box=document.createElement('input');box.type='checkbox';box.checked=true;cell.append(box);checks.push({box,action});
+      }
+      row.append(cell);
+      [action.status,action.siniestro,action.Nombre||'',action.Desde||'',action.Hasta||'',action.rows,action.reason||''].forEach(value=>{
+        const td=document.createElement('td');td.textContent=String(value);td.style.cssText='padding:8px;border-bottom:1px solid #ddd';row.append(td);
+      });table.append(row);
+    });preview.append(table);
+  };
+  analyze.addEventListener('click',async()=>{
+    if(busy)return;
+    if(!CURRENT_USER_EMAIL || !window.FB?.emailAllowed(CURRENT_USER_EMAIL))return alert('Iniciá sesión con una cuenta autorizada.');
+    if(!file.files[0])return alert('Seleccioná movimientos_art.xlsx exportado por SIML.');
+    busy=true;analyze.disabled=true;save.disabled=true;status.textContent='Leyendo Excel y registros actuales…';
+    try {
+      if(!window.XLSX)throw new Error('No está disponible SheetJS en el HTML.');
+      const wb=window.XLSX.read(await file.files[0].arrayBuffer(),{type:'array'});
+      const ws=wb.Sheets['Movimientos ART'];
+      if(!ws)throw new Error('Falta la hoja Movimientos ART. Usá el Excel exportado por SIML.');
+      const headers=window.XLSX.utils.sheet_to_json(ws,{header:1})[0]||[];
+      if(!['id_correo','tipo','siniestro','dni','fecha_accidente','fecha_desde','fecha_movimiento'].every(h=>headers.includes(h)))throw new Error('Las columnas no corresponden al formato SIML.');
+      const rows=window.XLSX.utils.sheet_to_json(ws,{defval:''});
+      await loadRegistrosFromCloud();
+      const now=new Date(),today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      plan=buildSimlPlan(rows,getRegistros(),indexPorDni,today);
+      showTable();
+      status.textContent=`${rows.length} correos; ${plan.actions.filter(a=>a.status==='CREAR').length} casos para crear; ${plan.actions.filter(a=>a.status==='ACTUALIZAR').length} para actualizar; ${plan.pending.length} grupos/filas pendientes. Los correos ya importados se omiten.`;
+      save.disabled=!plan.actions.length;
+    } catch(e){status.textContent='No se pudo analizar: '+e.message;plan=null;preview.replaceChildren();}
+    finally{busy=false;analyze.disabled=false;}
+  });
+  save.addEventListener('click',async()=>{
+    if(busy||!plan)return;
+    const selected=checks.filter(x=>x.box.checked).map(x=>x.action);
+    if(!selected.length)return alert('Seleccioná al menos un caso.');
+    if(!confirm(`Guardar ${selected.length} caso(s) seleccionados en Firebase según esta vista previa?`))return;
+    busy=true;save.disabled=true;analyze.disabled=true;file.disabled=true;
+    const errors=[];let ok=0;
+    try {
+      for(const action of selected){
+        try{await window.FB.applySiml(action,CURRENT_USER_EMAIL);ok++;}
+        catch(e){errors.push(action.siniestro+': '+e.message);}
+        status.textContent=`Guardando: ${ok+errors.length}/${selected.length}. Guardados ${ok}. Errores ${errors.length}.`;
+      }
+      await loadRegistrosFromCloud();refrescarFiltros();renderHistorico();
+      preview.replaceChildren();
+      status.textContent=`Guardados ${ok}. Errores ${errors.length}. Volvé a analizar para verificar o reintentar.`;
+      if(errors.length){const pre=document.createElement('pre');pre.textContent=errors.join('\n');preview.append(pre);}
+    } catch(e){status.textContent=`Guardados ${ok}. Error al refrescar: ${e.message}. Volvé a analizar.`;}
+    finally{busy=false;analyze.disabled=false;file.disabled=false;plan=null;save.disabled=true;}
+  });
+}
+instalarImportadorSiml();
 

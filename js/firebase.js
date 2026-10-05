@@ -20,7 +20,8 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // ✅ NO importamos config.js como módulo.
@@ -146,3 +147,29 @@ window.FB = {
 
 // señal para app.js
 window.dispatchEvent(new CustomEvent("fb-ready"));
+
+// Importación atómica: detecta cambios desde la vista previa y evita dos creaciones.
+window.FB.applySiml = async function(action, userEmail) {
+  const user = auth.currentUser;
+  if (!user || !emailAllowed(user.email) || user.email !== userEmail) {
+    throw new Error('Iniciá sesión con una cuenta autorizada.');
+  }
+  const ref = doc(db, window.FIRESTORE_COLLECTION || 'registros_art', action.id);
+  return runTransaction(db, async tx => {
+    const snap = await tx.get(ref);
+    const current = snap.exists() ? snap.data() : null;
+    const fingerprint = value => JSON.stringify(Object.fromEntries(
+      Object.entries(value || {}).filter(([key]) => !['id','createdAt','updatedAt'].includes(key))
+        .sort(([a],[b]) => a.localeCompare(b))));
+    if (fingerprint(current) !== fingerprint(action.expected)) {
+      throw new Error('El caso cambió desde la vista previa. Volvé a analizar el Excel.');
+    }
+    const payload = {...action.patch, updatedAt: serverTimestamp(), updatedBy: userEmail};
+    if (!current) {
+      payload.createdAt = serverTimestamp();
+      payload.createdBy = userEmail;
+      payload.dataVersion = window.DATA_VERSION || null;
+    }
+    tx.set(ref, payload, {merge:true});
+  });
+};
