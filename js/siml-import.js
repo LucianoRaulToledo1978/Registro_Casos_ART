@@ -80,7 +80,20 @@ export function buildPlan(rows, existing, dotacion, today) {
     if(altas.length) Object.assign(patch,{Hasta:end,TipoAccidente:'A'});
     const ids = [...new Set(mails.map(r=>text(r.id_correo)))];
     const processed = new Set(old?.SIML_IdCorreos || []);
-    if(old && ids.every(id=>processed.has(id))) continue;
+    // Permite completar observaciones de correos importados con versiones anteriores.
+    const accident = latest('tipo_accidente');
+    const reporter = latest('denuncia_ingresada_por');
+    let observation = text(old?.Observacion);
+    for (const detail of [accident ? `Tipo de accidente: ${accident}` : '',
+                          reporter ? `Denuncia ingresada por: ${reporter}` : '']) {
+      if (detail && !observation.toLocaleLowerCase().includes(detail.toLocaleLowerCase()))
+        observation = observation ? observation + ' | ' + detail : detail;
+    }
+    const enriched = observation !== text(old?.Observacion) ||
+      (reporter && reporter !== text(old?.SIML_DenunciaIngresadaPor));
+    if(old && ids.every(id=>processed.has(id)) && !enriched) continue;
+    patch.Observacion = observation;
+    if (reporter) patch.SIML_DenunciaIngresadaPor = reporter;
     const calculation = days(start,end||today);
     patch['Dias_ Caidos'] = String(calculation.total);
     patch['Dias_ Caidos Mes (desde DESDE)'] = String(calculation.months[start.slice(0,7)]||0);
