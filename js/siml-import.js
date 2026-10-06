@@ -106,12 +106,24 @@ export function buildPlan(rows, existing, dotacion, today) {
     const processed = new Set(old?.SIML_IdCorreos || []);
     // Permite completar observaciones de correos importados con versiones anteriores.
     const accident = latest('tipo_accidente');
-    const reporter = latest('denuncia_ingresada_por');
+    const reporterRaw = latest('denuncia_ingresada_por');
+    const reporter = reporterRaw.toUpperCase() === 'AUT' ? 'AUTODENUNCIADO' : reporterRaw;
+    const reentry = [...origins].reverse().find(r=>r.tipo==='REINGRESO');
+    const accidentDate = reentry ? ymd(reentry.fecha_accidente) : '';
+    if (reentry && !accidentDate) {reject('Falta fecha original del accidente del reingreso.');continue;}
+    if (reentry) {
+      patch.Fecha = accidentDate;
+      if (latest('descripcion')) patch.Descripcion = latest('descripcion');
+      if (latest('prestador')) patch.Prestador = latest('prestador');
+    }
+    const reentryChanged = reentry && (accidentDate !== ymd(old?.Fecha) ||
+      (patch.Descripcion && patch.Descripcion !== text(old?.Descripcion)) ||
+      (patch.Prestador && patch.Prestador !== text(old?.Prestador)));
     const observation = accident || text(old?.Observacion);
     const stateChanged = patch.Rechazado !== text(old?.Rechazado) || desiredState !== text(old?.TipoAccidente) ||
       (lastType === 'ALTA' && end !== ymd(old?.Hasta)) ||
       (isRejected && old?.SIML_RechazoSinFecha !== true);
-    const enriched = stateChanged || observation !== text(old?.Observacion) ||
+    const enriched = reentryChanged || stateChanged || observation !== text(old?.Observacion) ||
       (reporter && (!text(old?.DenunciaIngresadaPor) || reporter !== text(old?.SIML_DenunciaIngresadaPor)));
     if(old && ids.every(id=>processed.has(id)) && !enriched) continue;
     patch.Observacion = observation;
