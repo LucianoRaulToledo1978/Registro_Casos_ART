@@ -583,6 +583,7 @@ $("btnActualizarSOFIA")?.addEventListener("click", async () => {
 
     // ✅ NO reasignar índice, solo construirlo
     const stats = buildIndexSofia(rows);
+    completarGravedadSofiaSiVacia();
 
     await saveSofiaCache({ saved_at: new Date().toISOString(), rows });
 
@@ -606,6 +607,7 @@ $("btnUsarSofiaCache")?.addEventListener("click", async () => {
       return;
     }
     const stats = buildIndexSofia(payload.rows);
+    completarGravedadSofiaSiVacia();
     setText("estadoSofia", "SOFIA cargado desde cache ✅");
     if ($("infoSofia")) $("infoSofia").textContent = `Filas: ${stats.rows} | Indexados (Siniestro): ${stats.indexed} | Última carga: ${payload.saved_at}`;
   } catch (err) {
@@ -645,6 +647,7 @@ async function aplicarSofiaEnFormularioPorSiniestro(siniestro, recordId = null) 
 
  if (!sin || !window.indexSofiaPorSiniestro?.size) return;
 const hit = window.indexSofiaPorSiniestro.get(sin);
+if (!hit) return;
 
 
   console.log("🟩 SOFIA | MATCH encontrado:", hit);
@@ -671,13 +674,13 @@ const hit = window.indexSofiaPorSiniestro.get(sin);
 
   // Gravedad
   if (hit.gravedad && $("gravedad")) {
-    const nuevo = String(hit.gravedad).trim();
+    const nuevo = normalizarGravedad(hit.gravedad);
     const actual = String($("gravedad").value || "").trim();
 
     console.log("🟦 SOFIA | Gravedad actual:", actual, "nuevo:", nuevo);
 
     if (nuevo && actual !== nuevo) {
-      $("gravedad").value = nuevo;
+      seleccionarGravedad(nuevo);
       patch.TipoDenuncia = nuevo;
       changed = true;
     }
@@ -811,7 +814,7 @@ function limpiarFormularioCompleto() {
 
   // 5) volver selects a sus defaults (ajustá si querés otros valores)
   if ($("anc")) $("anc").value = "A";
-  if ($("gravedad")) $("gravedad").value = "Leve";
+  if ($("gravedad")) $("gravedad").value = "";
 
   // 6) limpiar mensajes de estado
   setText("estadoBusqueda", "");
@@ -906,7 +909,7 @@ function cargarRegistroEnFormulario(r) {
   if (typeof syncDiasFields === "function") syncDiasFields({ force: true });
 
   if ($("anc")) $("anc").value = r.TipoAccidente || "A";
-  if ($("gravedad")) $("gravedad").value = r.TipoDenuncia || "Leve";
+  if ($("gravedad")) seleccionarGravedad(r.TipoDenuncia || "");
 
   if ($("nroSiniestro")) $("nroSiniestro").value = r.Nro_Siniestro || "";
   if ($("cie10")) $("cie10").value = r.CIE10 || "";
@@ -978,6 +981,7 @@ function getVal(id) {
 }
 
 function getFormData() {
+  completarGravedadSofiaSiVacia();
 
   const desdeStr = getVal("desde");
   const hastaStr = getVal("hasta");
@@ -1127,7 +1131,7 @@ $("btnMigrarSofiaHistorico")?.addEventListener("click", async () => {
       const gravActual = String(r.TipoDenuncia || "").trim();
 
       const cieNuevo = normalizarCie(hit.cie10 || "");
-      const gravNuevo = String(hit.gravedad || "").trim();
+      const gravNuevo = normalizarGravedad(hit.gravedad);
 
       const patch = {};
 
@@ -2242,3 +2246,42 @@ function valorRechazado(r) {
   if (value === 'NO' || r.Rechazado === false) return 'NO';
   return r.SIML_UltimoTipo === 'RECHAZO' ? 'SI' : 'NO';
 }
+
+// Gravedad comienza vacía y puede completarse desde SOFIA_ART.
+function normalizarGravedad(value) {
+  const v = String(value ?? '').trim();
+  const plain = v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return plain === 'obito' ? 'Obito' : v;
+}
+function seleccionarGravedad(value) {
+  const select = document.getElementById('gravedad');
+  if (!select) return;
+  const v = normalizarGravedad(value);
+  if (![...select.options].some(o => o.value === v)) {
+    const option = document.createElement('option');
+    option.value = v;option.textContent = v === 'Obito' ? 'Óbito' : v;
+    select.append(option);
+  }
+  select.value = v;
+}
+function completarGravedadSofiaSiVacia() {
+  const select = document.getElementById('gravedad');
+  if (!select || select.value.trim()) return;
+  const number = normalizarSiniestro(document.getElementById('nroSiniestro')?.value || '');
+  const hit = window.indexSofiaPorSiniestro?.get(number);
+  if (hit?.gravedad) seleccionarGravedad(hit.gravedad);
+}
+function instalarGravedad() {
+  const select = document.getElementById('gravedad');
+  if (!select) return;
+  if (![...select.options].some(o => o.value === '')) {
+    const blank = document.createElement('option');blank.value = '';blank.textContent = '';
+    select.prepend(blank);
+  }
+  seleccionarGravedad('Obito');
+  seleccionarGravedad('');
+  document.getElementById('nroSiniestro')?.addEventListener('change', completarGravedadSofiaSiVacia);
+  document.getElementById('nroSiniestro')?.addEventListener('blur', completarGravedadSofiaSiVacia);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', instalarGravedad);
+else instalarGravedad();
