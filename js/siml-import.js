@@ -48,6 +48,22 @@ export function buildPlan(rows, existing, dotacion, today) {
     const known = new Map((old?.SIML_Movimientos || []).map(r=>[text(r.id_correo),r]));
     for (const mail of mails) known.set(text(mail.id_correo),mail);
     const sorted = [...known.values()].sort((a,b)=>text(a.fecha_correo).localeCompare(text(b.fecha_correo)) || (a._row||0)-(b._row||0));
+    // Un rechazo puede actualizar el estado del caso sin fecha Hasta ni datos de inicio.
+    if (old && text(sorted[sorted.length-1]?.tipo) === 'RECHAZO') {
+      const ids = [...new Set(mails.map(r=>text(r.id_correo)))];
+      const processed = new Set(old.SIML_IdCorreos || []);
+      if (text(old.TipoAccidente) === 'A' && text(old.Rechazado) === 'SI' &&
+          text(old.SIML_UltimoTipo) === 'RECHAZO' && ids.every(id=>processed.has(id))) continue;
+      const history = sorted.map(mail=>{const {_row,...data}=mail;return data;});
+      const patch = {TipoAccidente:'A',Rechazado:'SI',SIML_UltimoTipo:'RECHAZO',
+        SIML_RechazoSinFecha:true,SIML_IdCorreos:[...new Set([...processed,...ids])],
+        SIML_Movimientos:history,SIML_SiniestroBase:number.slice(0,-3)};
+      const expected = Object.fromEntries(Object.entries(old).filter(([k])=>k!=='id'));
+      actions.push({id:old.id,expected,patch,siniestro:number,status:'ACTUALIZAR',rows:mails.length,
+        Desde:old.Desde||'',Hasta:old.Hasta||'',Nombre:old.Nombre||'',
+        reason:'Rechazo: A/NC = A y Rechazado = SI. Revisar fecha efectiva de cierre manualmente.'});
+      continue;
+    }
     const origins = sorted.filter(r=>r.tipo==='DENUNCIA'||r.tipo==='REINGRESO');
     const latest = field => [...sorted].reverse().map(r=>text(r[field])).find(Boolean)||'';
     const originDates = new Set(origins.map(r=>ymd(r.tipo==='REINGRESO'?r.fecha_movimiento:r.fecha_accidente)));
