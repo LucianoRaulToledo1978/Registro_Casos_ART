@@ -2141,12 +2141,20 @@ function instalarImportadorSiml() {
   const file = document.createElement('input'); file.type='file';file.accept='.xlsx';
   const analyze = document.createElement('button');analyze.type='button';analyze.textContent='Analizar Excel SIML';
   const save = document.createElement('button');save.type='button';save.textContent='Guardar seleccionados en Firebase';save.disabled=true;
+  const clear = document.createElement('button');clear.type='button';clear.textContent='Limpiar importación';
   const status = document.createElement('p');status.setAttribute('role','status');
   const preview = document.createElement('div');preview.style.cssText='overflow:auto;max-height:420px';
-  panel.append(title,note,file,analyze,save,status,preview);
+  panel.append(title,note,file,analyze,save,clear,status,preview);
   document.body.append(panel);
   let plan = null, checks = [], busy=false;
-  file.addEventListener('change',()=>{plan=null;save.disabled=true;preview.replaceChildren();});
+  const clearAnalysis = () => {
+    plan=null;checks=[];save.disabled=true;status.textContent='';preview.replaceChildren();
+  };
+  clear.addEventListener('click',()=>{
+    if(busy)return;
+    file.value='';clearAnalysis();
+  });
+  file.addEventListener('change',clearAnalysis);
   const showTable = () => {
     preview.replaceChildren();checks=[];
     const table=document.createElement('table');table.style.cssText='width:100%;border-collapse:collapse;font-size:14px';
@@ -2169,7 +2177,7 @@ function instalarImportadorSiml() {
     if(busy)return;
     if(!CURRENT_USER_EMAIL || !window.FB?.emailAllowed(CURRENT_USER_EMAIL))return alert('Iniciá sesión con una cuenta autorizada.');
     if(!file.files[0])return alert('Seleccioná movimientos_art.xlsx exportado por SIML.');
-    busy=true;analyze.disabled=true;save.disabled=true;status.textContent='Leyendo Excel y registros actuales…';
+    busy=true;clear.disabled=true;file.disabled=true;analyze.disabled=true;save.disabled=true;status.textContent='Leyendo Excel y registros actuales…';
     try {
       if(!window.XLSX)throw new Error('No está disponible SheetJS en el HTML.');
       const wb=window.XLSX.read(await file.files[0].arrayBuffer(),{type:'array'});
@@ -2185,14 +2193,14 @@ function instalarImportadorSiml() {
       status.textContent=`${rows.length} correos; ${plan.actions.filter(a=>a.status==='CREAR').length} casos para crear; ${plan.actions.filter(a=>a.status==='ACTUALIZAR').length} para actualizar; ${plan.pending.length} grupos/filas pendientes. Los correos ya importados se omiten.`;
       save.disabled=!plan.actions.length;
     } catch(e){status.textContent='No se pudo analizar: '+e.message;plan=null;preview.replaceChildren();}
-    finally{busy=false;analyze.disabled=false;}
+    finally{busy=false;clear.disabled=false;file.disabled=false;analyze.disabled=false;}
   });
   save.addEventListener('click',async()=>{
     if(busy||!plan)return;
     const selected=checks.filter(x=>x.box.checked).map(x=>x.action);
     if(!selected.length)return alert('Seleccioná al menos un caso.');
     if(!confirm(`Guardar ${selected.length} caso(s) seleccionados en Firebase según esta vista previa?`))return;
-    busy=true;save.disabled=true;analyze.disabled=true;file.disabled=true;
+    busy=true;clear.disabled=true;save.disabled=true;analyze.disabled=true;file.disabled=true;
     const errors=[];let ok=0;
     try {
       for(const action of selected){
@@ -2205,7 +2213,7 @@ function instalarImportadorSiml() {
       status.textContent=`Guardados ${ok}. Errores ${errors.length}. Volvé a analizar para verificar o reintentar.`;
       if(errors.length){const pre=document.createElement('pre');pre.textContent=errors.join('\n');preview.append(pre);}
     } catch(e){status.textContent=`Guardados ${ok}. Error al refrescar: ${e.message}. Volvé a analizar.`;}
-    finally{busy=false;analyze.disabled=false;file.disabled=false;plan=null;save.disabled=true;}
+    finally{busy=false;clear.disabled=false;analyze.disabled=false;file.disabled=false;plan=null;checks=[];save.disabled=true;}
   });
 }
 instalarImportadorSiml();
