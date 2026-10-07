@@ -2201,16 +2201,30 @@ function instalarImportadorSiml() {
     if(!selected.length)return alert('Seleccioná al menos un caso.');
     if(!confirm(`Guardar ${selected.length} caso(s) seleccionados en Firebase según esta vista previa?`))return;
     busy=true;clear.disabled=true;save.disabled=true;analyze.disabled=true;file.disabled=true;
-    const errors=[];let ok=0;
+    const errors=[];const savedActions=[];let ok=0;
     try {
       for(const action of selected){
-        try{await window.FB.applySiml(action,CURRENT_USER_EMAIL);ok++;}
+        try{await window.FB.applySiml(action,CURRENT_USER_EMAIL);ok++;savedActions.push(action);}
         catch(e){errors.push(action.siniestro+': '+e.message);}
         status.textContent=`Guardando: ${ok+errors.length}/${selected.length}. Guardados ${ok}. Errores ${errors.length}.`;
       }
       await loadRegistrosFromCloud();refrescarFiltros();renderHistorico();
+      const reloaded = getRegistros();
+      for (const action of savedActions) {
+        const record = reloaded.find(r=>r.id===action.id);
+        const fields = ['Hasta','TipoAccidente','Rechazado'];
+        if (!record || fields.some(key=>Object.prototype.hasOwnProperty.call(action.patch,key) &&
+          String(record[key] ?? '') !== String(action.patch[key] ?? ''))) {
+          errors.push(action.siniestro+': el estado recargado no coincide con lo guardado; volvé a analizar.');
+        }
+      }
+      if (editingId && savedActions.some(action=>action.id===editingId)) {
+        const record = reloaded.find(r=>r.id===editingId);
+        if (record) cargarRegistroEnFormulario(record);
+      }
+
       preview.replaceChildren();
-      status.textContent=`Guardados ${ok}. Errores ${errors.length}. Volvé a analizar para verificar o reintentar.`;
+      status.textContent=`Guardados ${ok}. Errores ${errors.length}. Formulario actualizado para el caso abierto. Volvé a analizar para verificar o reintentar.`;
       if(errors.length){const pre=document.createElement('pre');pre.textContent=errors.join('\n');preview.append(pre);}
     } catch(e){status.textContent=`Guardados ${ok}. Error al refrescar: ${e.message}. Volvé a analizar.`;}
     finally{busy=false;clear.disabled=false;analyze.disabled=false;file.disabled=false;plan=null;checks=[];save.disabled=true;}
