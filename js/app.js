@@ -2224,7 +2224,7 @@ function instalarImportadorSiml() {
       }
 
       preview.replaceChildren();
-      status.textContent=`Guardados ${ok}. Errores ${errors.length}. Formulario actualizado para el caso abierto. Volvé a analizar para verificar o reintentar.`;
+      status.textContent=`Guardados ${ok}. Errores ${errors.length}. Volvé a buscar el caso o analizar para verificar. Si hay errores, los casos indicados requieren reintento.`;
       if(errors.length){const pre=document.createElement('pre');pre.textContent=errors.join('\n');preview.append(pre);}
     } catch(e){status.textContent=`Guardados ${ok}. Error al refrescar: ${e.message}. Volvé a analizar.`;}
     finally{busy=false;clear.disabled=false;analyze.disabled=false;file.disabled=false;plan=null;checks=[];save.disabled=true;}

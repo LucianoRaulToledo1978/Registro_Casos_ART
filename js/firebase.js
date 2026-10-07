@@ -158,9 +158,17 @@ window.FB.applySiml = async function(action, userEmail) {
   return runTransaction(db, async tx => {
     const snap = await tx.get(ref);
     const current = snap.exists() ? snap.data() : null;
-    const fingerprint = value => JSON.stringify(Object.fromEntries(
-      Object.entries(value || {}).filter(([key]) => !['id','createdAt','updatedAt'].includes(key))
-        .sort(([a],[b]) => a.localeCompare(b))));
+    // Compara valores, independientemente del orden de los campos internos.
+    const canonical = value => {
+      if (value && typeof value.toDate === 'function') return value.toDate().toISOString();
+      if (value instanceof Date) return value.toISOString();
+      if (Array.isArray(value)) return value.map(canonical);
+      if (value && typeof value === 'object') return Object.fromEntries(
+        Object.keys(value).sort().map(key=>[key,canonical(value[key])]));
+      return value;
+    };
+    const fingerprint = value => JSON.stringify(canonical(Object.fromEntries(
+      Object.entries(value || {}).filter(([key])=>!['id','createdAt','updatedAt'].includes(key)))));
     if (fingerprint(current) !== fingerprint(action.expected)) {
       throw new Error('El caso cambió desde la vista previa. Volvé a analizar el Excel.');
     }
