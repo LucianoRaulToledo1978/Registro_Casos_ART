@@ -45,9 +45,29 @@ export function buildPlan(rows, existing, dotacion, today) {
     if(dnis.size>1 || (old && dnis.size && dni(old.DNI) && !dnis.has(dni(old.DNI)))) {
       reject('DNI contradictorios entre correos o con el registro existente.');continue;
     }
+    if (!old && mails.some(r=>r.tipo==='DENUNCIA')) {
+      const employeeDni = [...dnis][0];
+      if (!employeeDni || !dotacion.has(employeeDni)) {
+        reject(dotacion.size === 0
+          ? 'No se crea el caso: cargá la dotación y volvé a analizar el Excel.'
+          : `No se crea el caso: DNI ${employeeDni || 'faltante'} no encontrado en la dotación.`);
+        continue;
+      }
+    }
     const known = new Map((old?.SIML_Movimientos || []).map(r=>[text(r.id_correo),r]));
     for (const mail of mails) known.set(text(mail.id_correo),mail);
     const sorted = [...known.values()].sort((a,b)=>text(a.fecha_correo).localeCompare(text(b.fecha_correo)) || (a._row||0)-(b._row||0));
+    const reporterMail = [...sorted].reverse().find(r=>text(r.denuncia_ingresada_por) || r.tipo==='DENUNCIA');
+    const reporterRaw = text(reporterMail?.denuncia_ingresada_por);
+    const reporter = !reporterRaw && reporterMail?.tipo==='DENUNCIA' || reporterRaw.toUpperCase()==='AUT'
+      ? 'AUTODENUNCIADO' : reporterRaw;
+    const reporterChanged = Boolean(reporter && !text(old?.DenunciaIngresadaPor));
+    const fillReporter = patch => {
+      if (reporter) {
+        patch.SIML_DenunciaIngresadaPor = reporter;
+        if (!text(old?.DenunciaIngresadaPor)) patch.DenunciaIngresadaPor = reporter;
+      }
+    };
     // El alta se aplica al caso existente por número completo, conservando su Desde.
     if (old && text(sorted[sorted.length-1]?.tipo) === 'ALTA') {
       const notices = sorted.filter(r=>r.tipo==='ALTA');
@@ -61,11 +81,12 @@ export function buildPlan(rows, existing, dotacion, today) {
       const calculation = start ? days(start,end) : null;
       const correctDays = !calculation || String(old['Dias_ Caidos']) === String(calculation.total);
       if (text(old.TipoAccidente)==='A' && ymd(old.Hasta)===end && text(old.Rechazado)==='NO' &&
-          correctDays && ids.every(id=>processed.has(id))) continue;
+          correctDays && !reporterChanged && ids.every(id=>processed.has(id))) continue;
       const patch = {Hasta:end,TipoAccidente:'A',Rechazado:'NO',SIML_UltimoTipo:'ALTA',
         SIML_RechazoSinFecha:false,SIML_IdCorreos:[...new Set([...processed,...ids])],
         SIML_Movimientos:sorted.map(mail=>{const {_row,...data}=mail;return data;}),
         SIML_SiniestroBase:number.slice(0,-3)};
+      fillReporter(patch);
       if (calculation) {
         patch['Dias_ Caidos']=String(calculation.total);
         patch['Dias_ Caidos Mes (desde DESDE)']=String(calculation.months[start.slice(0,7)]||0);
@@ -81,11 +102,12 @@ export function buildPlan(rows, existing, dotacion, today) {
       const ids = [...new Set(mails.map(r=>text(r.id_correo)))];
       const processed = new Set(old.SIML_IdCorreos || []);
       if (text(old.TipoAccidente) === 'A' && text(old.Rechazado) === 'SI' &&
-          text(old.SIML_UltimoTipo) === 'RECHAZO' && ids.every(id=>processed.has(id))) continue;
+          text(old.SIML_UltimoTipo) === 'RECHAZO' && !reporterChanged && ids.every(id=>processed.has(id))) continue;
       const history = sorted.map(mail=>{const {_row,...data}=mail;return data;});
       const patch = {TipoAccidente:'A',Rechazado:'SI',SIML_UltimoTipo:'RECHAZO',
         SIML_RechazoSinFecha:true,SIML_IdCorreos:[...new Set([...processed,...ids])],
         SIML_Movimientos:history,SIML_SiniestroBase:number.slice(0,-3)};
+      fillReporter(patch);
       const expected = Object.fromEntries(Object.entries(old).filter(([k])=>k!=='id'));
       actions.push({id:old.id,expected,patch,siniestro:number,status:'ACTUALIZAR',rows:mails.length,
         Desde:old.Desde||'',Hasta:old.Hasta||'',Nombre:old.Nombre||'',
@@ -134,8 +156,6 @@ export function buildPlan(rows, existing, dotacion, today) {
     const processed = new Set(old?.SIML_IdCorreos || []);
     // Permite completar observaciones de correos importados con versiones anteriores.
     const accident = latest('tipo_accidente');
-    const reporterRaw = latest('denuncia_ingresada_por');
-    const reporter = reporterRaw.toUpperCase() === 'AUT' ? 'AUTODENUNCIADO' : reporterRaw;
     const reentry = [...origins].reverse().find(r=>r.tipo==='REINGRESO');
     const accidentDate = reentry ? ymd(reentry.fecha_accidente) : '';
     if (reentry && !accidentDate) {reject('Falta fecha original del accidente del reingreso.');continue;}
