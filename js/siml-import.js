@@ -57,15 +57,20 @@ export function buildPlan(rows, existing, dotacion, today) {
     const known = new Map((old?.SIML_Movimientos || []).map(r=>[text(r.id_correo),r]));
     for (const mail of mails) known.set(text(mail.id_correo),mail);
     const sorted = [...known.values()].sort((a,b)=>text(a.fecha_correo).localeCompare(text(b.fecha_correo)) || (a._row||0)-(b._row||0));
-    const reporterMail = [...sorted].reverse().find(r=>text(r.denuncia_ingresada_por) || r.tipo==='DENUNCIA');
+    const byCommission = mail => mail?.tipo === 'REINGRESO' && !text(mail.denuncia_ingresada_por) &&
+      /se\s+recibe\s+dcm\s+nro\.?\s+expediente\s+srt\s*:/i.test(text(mail.descripcion));
+    const reporterMail = [...sorted].reverse().find(r=>text(r.denuncia_ingresada_por) || r.tipo==='DENUNCIA' || byCommission(r));
     const reporterRaw = text(reporterMail?.denuncia_ingresada_por);
-    const reporter = !reporterRaw && reporterMail?.tipo==='DENUNCIA' || reporterRaw.toUpperCase()==='AUT'
+    const reporter = byCommission(reporterMail) ? 'REINGRESO POR COMISION' : !reporterRaw && reporterMail?.tipo==='DENUNCIA' || reporterRaw.toUpperCase()==='AUT'
       ? 'AUTODENUNCIADO' : reporterRaw;
-    const reporterChanged = Boolean(reporter && !text(old?.DenunciaIngresadaPor));
+    const replaceReporter = !text(old?.DenunciaIngresadaPor) || (byCommission(reporterMail) &&
+      (text(old?.DenunciaIngresadaPor) === text(old?.SIML_DenunciaIngresadaPor) ||
+       text(old?.DenunciaIngresadaPor).toUpperCase() === 'AUTODENUNCIADO'));
+    const reporterChanged = Boolean(reporter && replaceReporter && reporter !== text(old?.DenunciaIngresadaPor));
     const fillReporter = patch => {
       if (reporter) {
         patch.SIML_DenunciaIngresadaPor = reporter;
-        if (!text(old?.DenunciaIngresadaPor)) patch.DenunciaIngresadaPor = reporter;
+        if (replaceReporter) patch.DenunciaIngresadaPor = reporter;
       }
     };
     // El alta se aplica al caso existente por número completo, conservando su Desde.
@@ -172,12 +177,12 @@ export function buildPlan(rows, existing, dotacion, today) {
       (lastType === 'ALTA' && end !== ymd(old?.Hasta)) ||
       (isRejected && old?.SIML_RechazoSinFecha !== true);
     const enriched = reentryChanged || stateChanged || observation !== text(old?.Observacion) ||
-      (reporter && (!text(old?.DenunciaIngresadaPor) || reporter !== text(old?.SIML_DenunciaIngresadaPor)));
+      (reporter && (reporterChanged || reporter !== text(old?.SIML_DenunciaIngresadaPor)));
     if(old && ids.every(id=>processed.has(id)) && !enriched) continue;
     patch.Observacion = observation;
     if (reporter) {
       patch.SIML_DenunciaIngresadaPor = reporter;
-      if (!text(old?.DenunciaIngresadaPor)) patch.DenunciaIngresadaPor = reporter;
+      if (replaceReporter) patch.DenunciaIngresadaPor = reporter;
     }
     const calculation = isRejected && !end ? null : days(start,end||today);
     if (isRejected) patch.SIML_RechazoSinFecha = true;
