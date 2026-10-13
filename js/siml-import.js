@@ -23,6 +23,7 @@ export function days(start, end) {
   }
   return {total,months};
 }
+const deniedReentry = mail => mail?.tipo === 'ALTA' && /reingreso\s+denegado/i.test(text(mail.motivo_alta));
 export function buildPlan(rows, existing, dotacion, today) {
   const groups = new Map(), pending = [];
   rows.forEach((r,index) => {
@@ -80,14 +81,15 @@ export function buildPlan(rows, existing, dotacion, today) {
       const ends = new Set(notices.filter(r=>text(r.fecha_correo)===lastDay).map(r=>ymd(r.fecha_desde)));
       if (ends.size!==1 || ends.has('')) {reject('Falta la fecha alta médica desde o hay fechas contradictorias.');continue;}
       const end = [...ends][0], start = ymd(old.Desde);
+      const rejected = deniedReentry(notices[notices.length-1]) ? 'SI' : 'NO';
       if (end > today || (start && end < start)) {reject('Fecha de alta futura o anterior al inicio.');continue;}
       const ids = [...new Set(mails.map(r=>text(r.id_correo)))];
       const processed = new Set(old.SIML_IdCorreos || []);
       const calculation = start ? days(start,end) : null;
       const correctDays = !calculation || String(old['Dias_ Caidos']) === String(calculation.total);
-      if (text(old.TipoAccidente)==='A' && ymd(old.Hasta)===end && text(old.Rechazado)==='NO' &&
+      if (text(old.TipoAccidente)==='A' && ymd(old.Hasta)===end && text(old.Rechazado)===rejected &&
           correctDays && !reporterChanged && ids.every(id=>processed.has(id))) continue;
-      const patch = {Hasta:end,TipoAccidente:'A',Rechazado:'NO',SIML_UltimoTipo:'ALTA',
+      const patch = {Hasta:end,TipoAccidente:'A',Rechazado:rejected,SIML_UltimoTipo:'ALTA',
         SIML_RechazoSinFecha:false,SIML_IdCorreos:[...new Set([...processed,...ids])],
         SIML_Movimientos:sorted.map(mail=>{const {_row,...data}=mail;return data;}),
         SIML_SiniestroBase:number.slice(0,-3)};
@@ -99,7 +101,7 @@ export function buildPlan(rows, existing, dotacion, today) {
       }
       actions.push({id:old.id,expected:Object.fromEntries(Object.entries(old).filter(([k])=>k!=='id')),
         patch,siniestro:number,status:'ACTUALIZAR',rows:mails.length,Desde:old.Desde||'',Hasta:end,
-        Nombre:old.Nombre||'',reason:start?'Alta médica: Hasta actualizada y A/NC = A.':'Alta aplicada; falta Desde válido para recalcular días.'});
+        Nombre:old.Nombre||'',reason:rejected==='SI'?'Alta por reingreso denegado: A/NC = A y Rechazado = SI.':start?'Alta médica: Hasta actualizada y A/NC = A.':'Alta aplicada; falta Desde válido para recalcular días.'});
       continue;
     }
     // Un rechazo puede actualizar el estado del caso sin fecha Hasta ni datos de inicio.
@@ -128,6 +130,7 @@ export function buildPlan(rows, existing, dotacion, today) {
     if(old && originDates.size && !originDates.has(start)) {reject('La fecha Desde manual difiere del correo.');continue;}
     const lastType = text(sorted[sorted.length-1]?.tipo);
     const isRejected = lastType === 'RECHAZO';
+    const isDenied = deniedReentry(sorted[sorted.length-1]);
     const closed = lastType === 'ALTA' || isRejected;
     const altas = sorted.filter(r=>r.tipo==='ALTA');
     let end = old ? ymd(old.Hasta) : '';
@@ -155,7 +158,7 @@ export function buildPlan(rows, existing, dotacion, today) {
     if(lastType === 'ALTA') patch.Hasta = end;
     const desiredState = closed ? 'A' : 'NC';
     patch.TipoAccidente = desiredState;
-    patch.Rechazado = isRejected ? 'SI' : 'NO';
+    patch.Rechazado = isRejected || isDenied ? 'SI' : 'NO';
     if (lastType === 'REINGRESO') patch.Hasta = ''; 
     const ids = [...new Set(mails.map(r=>text(r.id_correo)))];
     const processed = new Set(old?.SIML_IdCorreos || []);
