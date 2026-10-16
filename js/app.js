@@ -802,6 +802,7 @@ function limpiarFormularioCompleto() {
     "cie10",
     "cie10Desc",
     "observacion",
+    "reingresado",
     "rechazado",
     "denunciaIngresadaPor",
     "descripcion",
@@ -914,6 +915,7 @@ function cargarRegistroEnFormulario(r) {
   if ($("nroSiniestro")) $("nroSiniestro").value = r.Nro_Siniestro || "";
   if ($("cie10")) $("cie10").value = r.CIE10 || "";
   if ($("observacion")) $("observacion").value = r.Observacion || "";
+  if ($("reingresado")) $("reingresado").value = valorReingresado(r);
   if ($("rechazado")) $("rechazado").value = valorRechazado(r);
   if ($("denunciaIngresadaPor")) $("denunciaIngresadaPor").value = r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "";
   if ($("descripcion")) $("descripcion").value = r.Descripcion || "";
@@ -1016,6 +1018,7 @@ function getFormData() {
     CIE10: getVal("cie10"),
     CIE10_Desc: getCieDescripcion(getVal("cie10")),
     Observacion: getVal("observacion"),
+    Reingresado: getVal("reingresado") || "NO",
     Rechazado: getVal("rechazado") || "NO",
     DenunciaIngresadaPor: getVal("denunciaIngresadaPor"),
     Descripcion: getVal("descripcion"),
@@ -1880,6 +1883,7 @@ function exportToExcel(){
       "Gravedad": r.TipoDenuncia || "",
 
       "Obs": r.Observacion || "",
+      "Reingresado": valorReingresado(r),
       "Rechazado": valorRechazado(r),
       "Denuncia ingresada por": r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "",
       "Descripción del hecho":
@@ -1931,6 +1935,7 @@ function exportToPDF(){
       r["Dias_ Caidos"] ?? "",
       r["Dias_ Caidos Mes (desde DESDE)"] ?? "",
       r.Observacion || "",
+      valorReingresado(r),
       valorRechazado(r),
       r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "",
       r.Nro_Siniestro || ""
@@ -1940,7 +1945,7 @@ function exportToPDF(){
       startY: 45,
       head: [[
         "Fecha","DNI","Nombre","Provincia","Área","Ubicación","Desde","Hasta",
-        "Días Total","Días Mes (DESDE)","Observación","Rechazado","Denuncia ingresada por","N° Siniestro"
+        "Días Total","Días Mes (DESDE)","Observación","Reingresado","Rechazado","Denuncia ingresada por","N° Siniestro"
       ]],
       body,
       styles: { fontSize: 8, cellPadding: 3 },
@@ -2028,6 +2033,7 @@ function buildExportRowsFromHistorico() {
       "Dias Mes (EN CURSO)": calcDiasMesEnCurso(r.Desde || "", r.Hasta || ""),
       TipoAccidente: r.TipoAccidente ?? "",
       Observacion: r.Observacion ?? "",
+      "Reingresado": valorReingresado(r),
       "Rechazado": valorRechazado(r),
       "Denuncia ingresada por": r.DenunciaIngresadaPor ?? r.SIML_DenunciaIngresadaPor ?? "",
       Siniestro: r.Nro_Siniestro ?? ""
@@ -2212,7 +2218,7 @@ function instalarImportadorSiml() {
       const reloaded = getRegistros();
       for (const action of savedActions) {
         const record = reloaded.find(r=>r.id===action.id);
-        const fields = ['Hasta','TipoAccidente','Rechazado'];
+        const fields = ['Hasta','TipoAccidente','Reingresado','Rechazado'];
         if (!record || fields.some(key=>Object.prototype.hasOwnProperty.call(action.patch,key) &&
           String(record[key] ?? '') !== String(action.patch[key] ?? ''))) {
           errors.push(action.siniestro+': el estado recargado no coincide con lo guardado; volvé a analizar.');
@@ -2256,11 +2262,28 @@ function instalarCampoDenunciante() {
   for (const [value, title] of [['NO','No'],['SI','Sí']]) {
     const option = document.createElement('option');option.value = value;option.textContent = title;rejection.append(option);
   }
-  wrapper.append(rejectionLabel,rejection,label,input);
+  const reentryLabel = document.createElement('label');
+  reentryLabel.htmlFor = 'reingresado';reentryLabel.textContent = 'Reingresado:';
+  reentryLabel.style.cssText = rejectionLabel.style.cssText;
+  const reentry = document.createElement('select');
+  reentry.id = 'reingresado';reentry.name = 'reingresado';
+  reentry.style.cssText = rejection.style.cssText;
+  for (const value of ['NO','SI']) {
+    const option = document.createElement('option');option.value=value;option.textContent=value;reentry.append(option);
+  }
+  wrapper.append(reentryLabel,reentry,rejectionLabel,rejection,label,input);
   observation.after(wrapper);
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', instalarCampoDenunciante);
 else instalarCampoDenunciante();
+
+function valorReingresado(r) {
+  const value = String(r.Reingresado ?? '').trim().toUpperCase();
+  if (value === 'SI' || value === 'SÍ' || r.Reingresado === true) return 'SI';
+  if (value === 'NO' || r.Reingresado === false) return 'NO';
+  return r.SIML_UltimoTipo === 'REINGRESO' ||
+    (r.SIML_Movimientos || []).some(mail=>mail.tipo === 'REINGRESO') ? 'SI' : 'NO';
+}
 
 function valorRechazado(r) {
   const value = String(r.Rechazado ?? '').trim().toUpperCase();
