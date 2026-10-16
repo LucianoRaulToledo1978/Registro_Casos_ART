@@ -58,9 +58,6 @@ export function buildPlan(rows, existing, dotacion, today) {
     const known = new Map((old?.SIML_Movimientos || []).map(r=>[text(r.id_correo),r]));
     for (const mail of mails) known.set(text(mail.id_correo),mail);
     const sorted = [...known.values()].sort((a,b)=>text(a.fecha_correo).localeCompare(text(b.fecha_correo)) || (a._row||0)-(b._row||0));
-    const reingresado = sorted.some(r=>r.tipo==='REINGRESO') ||
-      ['SI','SÍ'].includes(text(old?.Reingresado).toUpperCase()) || old?.SIML_UltimoTipo==='REINGRESO' ? 'SI' : 'NO';
-    const reingresadoChanged = text(old?.Reingresado) !== reingresado;
     const byCommission = mail => mail?.tipo === 'REINGRESO' && !text(mail.denuncia_ingresada_por) &&
       /se\s+recibe\s+dcm\s+nro\.?\s+expediente\s+srt\s*:/i.test(text(mail.descripcion));
     const reporterMail = [...sorted].reverse().find(r=>text(r.denuncia_ingresada_por) || r.tipo==='DENUNCIA' || byCommission(r));
@@ -91,8 +88,8 @@ export function buildPlan(rows, existing, dotacion, today) {
       const calculation = start ? days(start,end) : null;
       const correctDays = !calculation || String(old['Dias_ Caidos']) === String(calculation.total);
       if (text(old.TipoAccidente)==='A' && ymd(old.Hasta)===end && text(old.Rechazado)===rejected &&
-          correctDays && !reingresadoChanged && !reporterChanged && ids.every(id=>processed.has(id))) continue;
-      const patch = {Reingresado:reingresado,Hasta:end,TipoAccidente:'A',Rechazado:rejected,SIML_UltimoTipo:'ALTA',
+          correctDays && !reporterChanged && ids.every(id=>processed.has(id))) continue;
+      const patch = {Hasta:end,TipoAccidente:'A',Rechazado:rejected,SIML_UltimoTipo:'ALTA',
         SIML_RechazoSinFecha:false,SIML_IdCorreos:[...new Set([...processed,...ids])],
         SIML_Movimientos:sorted.map(mail=>{const {_row,...data}=mail;return data;}),
         SIML_SiniestroBase:number.slice(0,-3)};
@@ -112,9 +109,9 @@ export function buildPlan(rows, existing, dotacion, today) {
       const ids = [...new Set(mails.map(r=>text(r.id_correo)))];
       const processed = new Set(old.SIML_IdCorreos || []);
       if (text(old.TipoAccidente) === 'A' && text(old.Rechazado) === 'SI' &&
-          text(old.SIML_UltimoTipo) === 'RECHAZO' && !reingresadoChanged && !reporterChanged && ids.every(id=>processed.has(id))) continue;
+          text(old.SIML_UltimoTipo) === 'RECHAZO' && !reporterChanged && ids.every(id=>processed.has(id))) continue;
       const history = sorted.map(mail=>{const {_row,...data}=mail;return data;});
-      const patch = {Reingresado:reingresado,TipoAccidente:'A',Rechazado:'SI',SIML_UltimoTipo:'RECHAZO',
+      const patch = {TipoAccidente:'A',Rechazado:'SI',SIML_UltimoTipo:'RECHAZO',
         SIML_RechazoSinFecha:true,SIML_IdCorreos:[...new Set([...processed,...ids])],
         SIML_Movimientos:history,SIML_SiniestroBase:number.slice(0,-3)};
       fillReporter(patch);
@@ -150,7 +147,7 @@ export function buildPlan(rows, existing, dotacion, today) {
     const workerDni = [...dnis][0] || dni(old?.DNI);
     if(!workerDni || !latest('trabajador') && !text(old?.Nombre)) {reject('Faltan DNI o nombre.');continue;}
     const worker = dotacion.get(workerDni) || {};
-    const patch = {Reingresado:reingresado};
+    const patch = {};
     const fields = {DNI:workerDni, CUIL:latest('cuil'), Nombre:latest('trabajador'),
       Descripcion:latest('descripcion'), Prestador:latest('prestador'),
       Legajo:text(worker.Legajo), Ubicacion:text(worker['Unidad organizativa']), Funcion:text(worker['Posición']),
@@ -182,7 +179,7 @@ export function buildPlan(rows, existing, dotacion, today) {
     const stateChanged = patch.Rechazado !== text(old?.Rechazado) || desiredState !== text(old?.TipoAccidente) ||
       (lastType === 'ALTA' && end !== ymd(old?.Hasta)) ||
       (isRejected && old?.SIML_RechazoSinFecha !== true);
-    const enriched = reingresadoChanged || reentryChanged || stateChanged || observation !== text(old?.Observacion) ||
+    const enriched = reentryChanged || stateChanged || observation !== text(old?.Observacion) ||
       (reporter && (reporterChanged || reporter !== text(old?.SIML_DenunciaIngresadaPor)));
     if(old && ids.every(id=>processed.has(id)) && !enriched) continue;
     patch.Observacion = observation;
